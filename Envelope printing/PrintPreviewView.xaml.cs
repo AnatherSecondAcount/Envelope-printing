@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Printing;
 using System.Threading.Tasks;
@@ -22,26 +23,23 @@ namespace Envelope_printing
 
         private void OpenPrinterSettings_Click(object sender, RoutedEventArgs e)
         {
-            var dlg = new System.Windows.Controls.PrintDialog();
             try
             {
-                if (VM?.SelectedPrinter != null)
+                if (VM?.SelectedPrinter == null)
                 {
-                    dlg.PrintQueue = VM.SelectedPrinter;
-                    // apply current ticket so dialog shows our current size/orientation choices
-                    dlg.PrintTicket = VM.SelectedPrinter.UserPrintTicket ?? VM.SelectedPrinter.DefaultPrintTicket;
+                    MessageBox.Show("Принтер не выбран.");
+                    return;
                 }
-                if (dlg.ShowDialog() == true)
+
+                // Open native printer preferences dialog for the selected printer
+                var printerName = VM.SelectedPrinter.FullName;
+                var psi = new ProcessStartInfo
                 {
-                    // Save changes back to queue and view model
-                    if (VM?.SelectedPrinter != null && dlg.PrintTicket != null)
-                    {
-                        var merged = VM.SelectedPrinter.MergeAndValidatePrintTicket(VM.SelectedPrinter.UserPrintTicket ?? VM.SelectedPrinter.DefaultPrintTicket, dlg.PrintTicket);
-                        VM.SelectedPrinter.UserPrintTicket = merged.ValidatedPrintTicket;
-                    }
-                    // refresh sizes/margins in VM
-                    (DataContext as PrintPreviewViewModel)?.GetType().GetMethod("LoadPrinters", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.Invoke(DataContext, null);
-                }
+                    FileName = "rundll32",
+                    Arguments = $"printui.dll,PrintUIEntry /p /n \"{printerName}\"",
+                    UseShellExecute = true
+                };
+                Process.Start(psi);
             }
             catch (Exception ex)
             {

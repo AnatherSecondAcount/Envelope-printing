@@ -65,14 +65,14 @@ namespace Envelope_printing
         public string DisplayText => IsImage ? "" : (IsBound ? $"[{ContentBindingPath}]" : StaticText);
 
         // Appearance brushes used by visual template
-        public Brush Background { get => SafeParseBrush(Model.Background, Brushes.Transparent); set { Model.Background = value.ToString(); OnPropertyChanged(); OnPropertyChanged(nameof(BackgroundString)); OnPropertyChanged(nameof(BackgroundChoice)); } }
-        public Brush BorderBrush { get => SafeParseBrush(Model.BorderBrush, Brushes.Transparent); set { Model.BorderBrush = value.ToString(); OnPropertyChanged(); OnPropertyChanged(nameof(BorderBrushString)); OnPropertyChanged(nameof(BorderBrushChoice)); } }
-        public Brush Foreground { get => SafeParseBrush(Model.Foreground, Brushes.Black); set { Model.Foreground = value.ToString(); OnPropertyChanged(); OnPropertyChanged(nameof(ForegroundString)); OnPropertyChanged(nameof(ForegroundChoice)); } }
+        public Brush Background { get => SafeParseBrush(Model.Background, Brushes.Transparent); set { Model.Background = value?.ToString() ?? "Transparent"; OnPropertyChanged(); OnPropertyChanged(nameof(BackgroundString)); OnPropertyChanged(nameof(BackgroundChoice)); } }
+        public Brush BorderBrush { get => SafeParseBrush(Model.BorderBrush, Brushes.Transparent); set { Model.BorderBrush = value?.ToString() ?? "Transparent"; OnPropertyChanged(); OnPropertyChanged(nameof(BorderBrushString)); OnPropertyChanged(nameof(BorderBrushChoice)); } }
+        public Brush Foreground { get => SafeParseBrush(Model.Foreground, Brushes.Black); set { Model.Foreground = value?.ToString() ?? "Black"; OnPropertyChanged(); OnPropertyChanged(nameof(ForegroundString)); OnPropertyChanged(nameof(ForegroundChoice)); } }
 
         // String helpers for editing in UI
-        public string BackgroundString { get => Model.Background; set { Model.Background = value; OnPropertyChanged(); OnPropertyChanged(nameof(Background)); OnPropertyChanged(nameof(BackgroundChoice)); } }
-        public string BorderBrushString { get => Model.BorderBrush; set { Model.BorderBrush = value; OnPropertyChanged(); OnPropertyChanged(nameof(BorderBrush)); OnPropertyChanged(nameof(BorderBrushChoice)); } }
-        public string ForegroundString { get => Model.Foreground; set { Model.Foreground = value; OnPropertyChanged(); OnPropertyChanged(nameof(Foreground)); OnPropertyChanged(nameof(ForegroundChoice)); } }
+        public string BackgroundString { get => Model.Background; set { Model.Background = value ?? "Transparent"; OnPropertyChanged(); OnPropertyChanged(nameof(Background)); OnPropertyChanged(nameof(BackgroundChoice)); } }
+        public string BorderBrushString { get => Model.BorderBrush; set { Model.BorderBrush = value ?? "Transparent"; OnPropertyChanged(); OnPropertyChanged(nameof(BorderBrush)); OnPropertyChanged(nameof(BorderBrushChoice)); } }
+        public string ForegroundString { get => Model.Foreground; set { Model.Foreground = value ?? "Black"; OnPropertyChanged(); OnPropertyChanged(nameof(Foreground)); OnPropertyChanged(nameof(ForegroundChoice)); } }
 
         // Simple color choices mapping (used by ComboBoxes)
         public string ForegroundChoice { get => MapBrushToChoice(Model.Foreground); set { if (string.IsNullOrEmpty(value)) return; if (value != "PALETTE") { Model.Foreground = value; OnPropertyChanged(nameof(ForegroundString)); OnPropertyChanged(nameof(Foreground)); } OnPropertyChanged(); } }
@@ -86,13 +86,19 @@ namespace Envelope_printing
         // Font: model stores DIP size; designer canvas is scaled x3.78, so expose DisplayFontSize to neutralize
         public int FontSize { get => Model.FontSize; set { Model.FontSize = value; OnPropertyChanged(); OnPropertyChanged(nameof(DisplayFontSize)); } }
         public double DisplayFontSize => FontSize / Units.PxPerMm;
-        public string FontFamily { get => Model.FontFamily; set { Model.FontFamily = value; OnPropertyChanged(); } }
-        public FontWeight FontWeight { get => (FontWeight)new FontWeightConverter().ConvertFromString(Model.FontWeight); set { Model.FontWeight = value.ToString(); OnPropertyChanged(); } }
+        public string FontFamily { get => Model.FontFamily; set { Model.FontFamily = value ?? "Segoe UI"; OnPropertyChanged(); } }
+        public FontWeight FontWeight { get { var s = string.IsNullOrWhiteSpace(Model.FontWeight) ? "Normal" : Model.FontWeight; return (FontWeight)new FontWeightConverter().ConvertFromString(s); } set { Model.FontWeight = value.ToString(); OnPropertyChanged(); } }
 
-        public HorizontalAlignment HorizontalAlignment { get => (HorizontalAlignment)Enum.Parse(typeof(HorizontalAlignment), Model.HorizontalAlignment); set { Model.HorizontalAlignment = value.ToString(); OnPropertyChanged(); OnPropertyChanged(nameof(HorizontalAlignmentString)); } }
-        public VerticalAlignment VerticalAlignment { get => (VerticalAlignment)Enum.Parse(typeof(VerticalAlignment), Model.VerticalAlignment); set { Model.VerticalAlignment = value.ToString(); OnPropertyChanged(); OnPropertyChanged(nameof(VerticalAlignmentString)); } }
-        public Stretch Stretch { get => (Stretch)Enum.Parse(typeof(Stretch), Model.Stretch); set { Model.Stretch = value.ToString(); OnPropertyChanged(); OnPropertyChanged(nameof(StretchString)); } }
-        public TextAlignment TextAlignment { get => (TextAlignment)Enum.Parse(typeof(TextAlignment), Model.TextAlignment); set { Model.TextAlignment = value.ToString(); OnPropertyChanged(); OnPropertyChanged(nameof(TextAlignmentString)); } }
+        private static TEnum SafeParseEnum<TEnum>(string value, TEnum fallback) where TEnum: struct
+        {
+            if (string.IsNullOrWhiteSpace(value)) return fallback;
+            if (Enum.TryParse<TEnum>(value, true, out var res)) return res;
+            return fallback;
+        }
+        public HorizontalAlignment HorizontalAlignment { get => SafeParseEnum(Model.HorizontalAlignment, System.Windows.HorizontalAlignment.Left); set { Model.HorizontalAlignment = value.ToString(); OnPropertyChanged(); OnPropertyChanged(nameof(HorizontalAlignmentString)); } }
+        public VerticalAlignment VerticalAlignment { get => SafeParseEnum(Model.VerticalAlignment, System.Windows.VerticalAlignment.Top); set { Model.VerticalAlignment = value.ToString(); OnPropertyChanged(); OnPropertyChanged(nameof(VerticalAlignmentString)); } }
+        public Stretch Stretch { get => SafeParseEnum(Model.Stretch, System.Windows.Media.Stretch.Uniform); set { Model.Stretch = value.ToString(); OnPropertyChanged(); OnPropertyChanged(nameof(StretchString)); } }
+        public TextAlignment TextAlignment { get => SafeParseEnum(Model.TextAlignment, System.Windows.TextAlignment.Left); set { Model.TextAlignment = value.ToString(); OnPropertyChanged(); OnPropertyChanged(nameof(TextAlignmentString)); } }
         public double Padding { get => Model.Padding; set { Model.Padding = value; OnPropertyChanged(); } }
         public double Opacity { get => Model.Opacity; set { Model.Opacity = value; OnPropertyChanged(); } }
         public double RotationDegrees { get => Model.RotationDegrees; set { Model.RotationDegrees = value; Rotate.Angle = value; OnPropertyChanged(); } }
@@ -104,50 +110,10 @@ namespace Envelope_printing
         #endregion
 
         // String bridge properties to bind ComboBoxes that use string ItemsSource
-        public string HorizontalAlignmentString
-        {
-            get => Model.HorizontalAlignment;
-            set
-            {
-                if (Model.HorizontalAlignment == value) return;
-                Model.HorizontalAlignment = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(HorizontalAlignment));
-            }
-        }
-        public string VerticalAlignmentString
-        {
-            get => Model.VerticalAlignment;
-            set
-            {
-                if (Model.VerticalAlignment == value) return;
-                Model.VerticalAlignment = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(VerticalAlignment));
-            }
-        }
-        public string TextAlignmentString
-        {
-            get => Model.TextAlignment;
-            set
-            {
-                if (Model.TextAlignment == value) return;
-                Model.TextAlignment = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(TextAlignment));
-            }
-        }
-        public string StretchString
-        {
-            get => Model.Stretch;
-            set
-            {
-                if (Model.Stretch == value) return;
-                Model.Stretch = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(Stretch));
-            }
-        }
+        public string HorizontalAlignmentString { get => Model.HorizontalAlignment; set { Model.HorizontalAlignment = value ?? "Left"; OnPropertyChanged(); OnPropertyChanged(nameof(HorizontalAlignment)); } }
+        public string VerticalAlignmentString { get => Model.VerticalAlignment; set { Model.VerticalAlignment = value ?? "Top"; OnPropertyChanged(); OnPropertyChanged(nameof(VerticalAlignment)); } }
+        public string TextAlignmentString { get => Model.TextAlignment; set { Model.TextAlignment = value ?? "Left"; OnPropertyChanged(); OnPropertyChanged(nameof(TextAlignment)); } }
+        public string StretchString { get => Model.Stretch; set { Model.Stretch = value ?? "Uniform"; OnPropertyChanged(); OnPropertyChanged(nameof(Stretch)); } }
 
         public TemplateItemViewModel(TemplateItem model)
         {

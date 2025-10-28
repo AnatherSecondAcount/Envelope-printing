@@ -26,22 +26,13 @@
  <ColumnDefinition Width="Auto"/>
  <ColumnDefinition Width="*"/>
  </Grid.ColumnDefinitions>
- <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
- <Border Padding="6" Style="{StaticResource OverlayPanelBorder}" Margin="0,0,8,0">
+ <Border Grid.Column="1" Padding="6" Style="{StaticResource OverlayPanelBorder}" Margin="0,0,8,0">
  <StackPanel Orientation="Horizontal">
  <Button Content="-" Command="{Binding ZoomOutCommand}" MinWidth="44"/>
  <Button Content="{Binding ZoomPercentage, StringFormat={}{0}%}" Command="{Binding ResetZoomCommand}" MinWidth="64" Margin="8,0"/>
  <Button Content="+" Command="{Binding ZoomInCommand}" MinWidth="44"/>
  </StackPanel>
  </Border>
- <Border Padding="6" Style="{StaticResource OverlayPanelBorder}">
- <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
- <Button Content="?" Command="{Binding PrevPageCommand}" MinWidth="44"/>
- <TextBlock Text="{Binding CurrentPageDisplay}" Margin="8,0" VerticalAlignment="Center"/>
- <Button Content="?" Command="{Binding NextPageCommand}" MinWidth="44"/>
- </StackPanel>
- </Border>
- </StackPanel>
  </Grid>
  </Grid>
 </Window>

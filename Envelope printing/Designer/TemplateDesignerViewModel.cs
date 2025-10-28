@@ -31,6 +31,12 @@ namespace Envelope_printing
  private Point _dragStartItemPos;
  private const double PxPerMm =3.78;
 
+ // Default sizes for newly created items (in mm)
+ private const double DefaultTextWidth =60.0;
+ private const double DefaultTextHeight =12.0;
+ private const double DefaultImageWidth =45.0;
+ private const double DefaultImageHeight =30.0;
+
  public event Func<Size> GetViewSizeRequested;
 
  private bool _isLeftPanelVisible = true;
@@ -77,18 +83,18 @@ namespace Envelope_printing
  };
  public ObservableCollection<OptionItem> StretchModes { get; } = new ObservableCollection<OptionItem>
  {
- new OptionItem("Без растяжения","None"), new OptionItem("Равномерно","Uniform"), new OptionItem("Заполнение","Fill"), new OptionItem("Заполнение (обрезка)","UniformToFill")
+ new OptionItem("Без масштабирования","None"), new OptionItem("По размеру","Uniform"), new OptionItem("Растянуть","Fill"), new OptionItem("Обрезать","UniformToFill")
  };
  public ObservableCollection<OptionItem> ColorChoices { get; } = new ObservableCollection<OptionItem>
  {
- new OptionItem("Прозрачный","Transparent"),
- new OptionItem("Чёрный","Black"),
+ new OptionItem("Прозрачно","Transparent"),
+ new OptionItem("Черный","Black"),
  new OptionItem("Белый","White"),
  new OptionItem("Серый","Gray"),
  new OptionItem("Красный","Red"),
  new OptionItem("Синий","Blue"),
  new OptionItem("Голубой","LightBlue"),
- new OptionItem("Зелёный","Green")
+ new OptionItem("Зеленый","Green")
  };
  public ObservableCollection<OptionItem> TextAlignments { get; } = new ObservableCollection<OptionItem>
  {
@@ -140,6 +146,7 @@ namespace Envelope_printing
 
  _dataService = new DataService();
  LoadTemplates();
+ // Do not auto-create templates here; keep empty until user creates one
  LoadAvailableRecipientColumns();
 
  _ui_service.PropertyChanged += (s, e) => { if (e.PropertyName == nameof(UIService.IsMainNavExpanded)) OnPropertyChanged(nameof(LeftPanelHiddenPosition)); };
@@ -191,7 +198,7 @@ namespace Envelope_printing
  public void RemoveTemplate(Template template)
  {
  if (template == null) return;
- var result = MessageBox.Show($"Удалить шаблон '{template.Name}'?", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+ var result = MessageBox.Show($"Удалить холст '{template.Name}'?", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Warning);
  if (result == MessageBoxResult.Yes)
  {
  _dataService.DeleteTemplate(template);
@@ -203,7 +210,7 @@ namespace Envelope_printing
  private void AddTextBlock(object obj)
  {
  if (SelectedTemplate == null) return;
- var newItem = new TemplateItem { PositionX =50, PositionY =50, Width =150, Height =25, StaticText = "Новый текст", TemplateId = SelectedTemplate.Id };
+ var newItem = new TemplateItem { PositionX =10, PositionY =10, Width = DefaultTextWidth, Height = DefaultTextHeight, StaticText = "Новый текст", TemplateId = SelectedTemplate.Id, ZIndex =5 };
  SelectedTemplate.Items.Add(newItem);
  var newItemVM = new TemplateItemViewModel(newItem);
  SelectedTemplateItems.Add(newItemVM);
@@ -216,7 +223,7 @@ namespace Envelope_printing
  var dlg = new Microsoft.Win32.OpenFileDialog { Title = "Выбор изображения", Filter = "Изображения|*.png;*.jpg;*.jpeg;*.bmp|Все файлы|*.*" };
  if (dlg.ShowDialog() == true)
  {
- var newItem = new TemplateItem { PositionX =50, PositionY =50, Width =100, Height =100, IsImage = true, ImagePath = dlg.FileName, TemplateId = SelectedTemplate.Id };
+ var newItem = new TemplateItem { PositionX =15, PositionY =15, Width = DefaultImageWidth, Height = DefaultImageHeight, IsImage = true, ImagePath = dlg.FileName, TemplateId = SelectedTemplate.Id, ZIndex =4 };
  SelectedTemplate.Items.Add(newItem);
  var newItemVM = new TemplateItemViewModel(newItem);
  SelectedTemplateItems.Add(newItemVM);
@@ -270,10 +277,41 @@ namespace Envelope_printing
  }
  SelectedTemplate.Name = SelectedTemplateName; SelectedTemplate.EnvelopeWidth = SelectedTemplateWidth; SelectedTemplate.EnvelopeHeight = SelectedTemplateHeight;
  _dataService.UpdateTemplate(SelectedTemplate);
- MessageBox.Show("Изменения сохранены.", "Сохранение", MessageBoxButton.OK, MessageBoxImage.Information);
+ MessageBox.Show("Изменения сохранены.", "Готово", MessageBoxButton.OK, MessageBoxImage.Information);
  }
 
- private void PreviewTemplate(object obj) => MessageBox.Show("Preview not implemented.");
+ private void PreviewTemplate(object obj)
+ {
+ try
+ {
+ // Lightweight VM: no printers, show exact canvas size, use first recipient if exists
+ var vm = new PrintPreviewViewModel(skipInitialization: true)
+ {
+ SelectedTemplate = this.SelectedTemplate,
+ SheetWidthMm = this.SelectedTemplate?.EnvelopeWidth ??0,
+ SheetHeightMm = this.SelectedTemplate?.EnvelopeHeight ??0,
+ MarginLeftMm =0,
+ MarginTopMm =0,
+ MarginRightMm =0,
+ MarginBottomMm =0,
+ FitToImageableArea = true,
+ TemplateScalePercent =100,
+ TemplateOffsetXMm =0,
+ TemplateOffsetYMm =0,
+ CurrentPage =1,
+ PageSize =1,
+ IsPrinting = true // hide all borders/overlays in preview
+ };
+ // recipients: take first if present
+ var list = _dataService.GetAllRecipients() ?? new System.Collections.Generic.List<Recipient>();
+ vm.Recipients = new ObservableCollection<Recipient>(list);
+ vm.LoadPreviewItems();
+ var wnd = new FullPreviewWindow { DataContext = vm };
+ if (Application.Current != null && Application.Current.MainWindow != wnd) wnd.Owner = Application.Current.MainWindow;
+ wnd.Show();
+ }
+ catch { }
+ }
 
  private void UpdateSelectedTemplateProperties()
  {
@@ -284,7 +322,6 @@ namespace Envelope_printing
  SelectedTemplateHeight = SelectedTemplate.EnvelopeHeight;
  SelectedTemplateItems = new ObservableCollection<TemplateItemViewModel>(SelectedTemplate.Items.Select(item => new TemplateItemViewModel(item)));
  ValidateAllItemsBounds();
- // Removed automatic CalculateAndSetInitialZoom here; it will be invoked by the View after layout is ready
  }
  else { SelectedTemplateItems?.Clear(); }
  // Reset selection and keep properties panel closed by default
@@ -362,8 +399,21 @@ namespace Envelope_printing
  private void MoveItemDown(TemplateItemViewModel item) { if (item == null || SelectedTemplateItems == null) return; int cur = item.ZIndex; if (cur <=0) return; var target = SelectedTemplateItems.Where(i => i.ZIndex < cur).OrderByDescending(i => i.ZIndex).FirstOrDefault(); if (target != null) { target.ZIndex = cur; item.ZIndex = Math.Max(0, cur -1); } else { item.ZIndex = Math.Max(0, cur -1); } ReorderByZ(); }
  private void BringToFront(TemplateItemViewModel item) { if (item == null || SelectedTemplateItems == null) return; int max = SelectedTemplateItems.Max(i => i.ZIndex); item.ZIndex = Math.Min(10, Math.Max(max, item.ZIndex) +1); ReorderByZ(); }
  private void SendToBack(TemplateItemViewModel item) { if (item == null || SelectedTemplateItems == null) return; int min = SelectedTemplateItems.Min(i => i.ZIndex); item.ZIndex = Math.Max(0, Math.Min(min, item.ZIndex) -1); ReorderByZ(); }
- private void ReorderByZ() { if (SelectedTemplateItems == null) return; var ordered = SelectedTemplateItems.OrderBy(i => i.ZIndex).ToList(); SelectedTemplateItems.Clear(); foreach (var it in ordered) SelectedTemplateItems.Add(it); }
-
+ private void ReorderByZ()
+ {
+ if (SelectedTemplateItems == null) return;
+ // sort by z and update Panel.ZIndex via binding; no need to rebuild collection which can disturb initial layout
+ var ordered = SelectedTemplateItems.OrderBy(i => i.ZIndex).ToList();
+ for (int i =0; i < ordered.Count; i++)
+ {
+ var item = ordered[i];
+ int currentIndex = SelectedTemplateItems.IndexOf(item);
+ if (currentIndex != i)
+ {
+ SelectedTemplateItems.Move(currentIndex, i);
+ }
+ }
+ }
  public ObservableCollection<TemplateItemViewModel> CanvasItems => SelectedTemplateItems;
 
  // Ensure DB not-null by normalizing nulls to empty strings

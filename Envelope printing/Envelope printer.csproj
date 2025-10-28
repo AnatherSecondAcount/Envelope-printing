@@ -8,19 +8,34 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <AssemblyName>EnvelopePrinter</AssemblyName>
-    <Company>YourCompany</Company>
+    <Company>AnatherSecondAcount</Company>
     <Product>Envelope Printer</Product>
-    <Authors>YourCompany</Authors>
+    <Authors>AnatherSecondAcount</Authors>
     <Description>Tool for printing envelopes with templates.</Description>
-    <RepositoryUrl>https://github.com/your-org/your-repo</RepositoryUrl>
+    <RepositoryUrl>https://github.com/AnatherSecondAcount/Envelope-printing</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <Deterministic>true</Deterministic>
-    <Copyright>Copyright (c) YourCompany</Copyright>
+    <Copyright>Copyright (c) AnatherSecondAcount</Copyright>
     <Version>1.0.0.0</Version>
     <FileVersion>1.0.0.0</FileVersion>
     <NeutralLanguage>ru-RU</NeutralLanguage>
     <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <ApplicationIcon>AppLogo.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="Resources\AppLogo.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="AppLogo.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Resources\AppLogo.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Resource>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.105.0" />

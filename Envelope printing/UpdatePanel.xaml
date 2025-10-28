@@ -8,17 +8,29 @@
  d:DesignHeight="240" d:DesignWidth="300">
  <Border Padding="12" Background="#FFF" BorderBrush="#DDD" BorderThickness="1" CornerRadius="6">
  <StackPanel>
- <TextBlock Text="Updates" FontWeight="SemiBold" FontSize="16"/>
- <TextBlock Margin="0,8,0,0" Text="Current version:"/>
- <TextBlock x:Name="CurrentVersionText" FontWeight="Bold"/>
+ <TextBlock Text="Обновления" FontWeight="SemiBold" FontSize="16"/>
+ <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+ <TextBlock Text="Текущая версия:"/>
+ <TextBlock x:Name="CurrentVersionText" FontWeight="Bold" Margin="6,0,0,0"/>
+ </StackPanel>
+ <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+ <TextBlock Text="Последняя версия:"/>
+ <TextBlock x:Name="LatestVersionText" Margin="6,0,0,0"/>
+ </StackPanel>
 
  <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
- <Button x:Name="CheckButton" Content="Check for updates" Width="180" Click="CheckButton_Click"/>
- <TextBlock x:Name="StatusText" Margin="10,0,0,0" VerticalAlignment="Center"/>
+ <Button x:Name="CheckButton" Content="Проверить" Width="100" Click="CheckButton_Click"/>
+ <Button x:Name="DownloadButton" Content="Скачать" Width="100" Margin="8,0,0,0" Click="DownloadButton_Click" Visibility="Collapsed"/>
+ <Button x:Name="CancelButton" Content="Отмена" Width="80" Margin="8,0,0,0" Click="CancelButton_Click" Visibility="Collapsed"/>
  </StackPanel>
 
  <ProgressBar x:Name="DownloadProgress" Margin="0,10,0,0" Height="10" Minimum="0" Maximum="100" Visibility="Collapsed"/>
- <TextBlock x:Name="HintText" Margin="0,6,0,0" FontSize="12" Foreground="#666">Update panel placeholder. Notifications and download progress will appear here.</TextBlock>
+ <TextBlock x:Name="StatusText" Margin="0,6,0,0"/>
+
+ <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+ <Button x:Name="InstallButton" Content="Установить" Width="100" Click="InstallButton_Click" Visibility="Collapsed"/>
+ <Button x:Name="OpenFolderButton" Content="Открыть папку" Width="120" Margin="8,0,0,0" Click="OpenFolderButton_Click" Visibility="Collapsed"/>
+ </StackPanel>
  </StackPanel>
  </Border>
 </UserControl>

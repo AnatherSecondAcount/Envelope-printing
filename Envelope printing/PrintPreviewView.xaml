@@ -25,7 +25,7 @@
         <Style x:Key="ActionButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"/>
     </UserControl.Resources>
 
-    <!-- Main3-area layout: left settings, right-top preview (fit), right-bottom filters & update panel -->
+    <!-- Main3-area layout: left settings, right-top preview (fit), right-bottom filters -->
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="320"/>
@@ -148,10 +148,6 @@
                 </Grid>
 
                 <Button Content="Печать" Style="{StaticResource ActionButtonStyle}" Height="40" Margin="0,12,0,0" Click="Print_Click" HorizontalAlignment="Stretch"/>
-
-                <!-- Update panel below settings -->
-                <TextBlock Text="Обновления" Style="{StaticResource SectionHeader}"/>
-                <local:UpdatePanel />
             </StackPanel>
         </ScrollViewer>
 

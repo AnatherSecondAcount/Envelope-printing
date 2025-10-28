@@ -146,6 +146,8 @@ namespace Envelope_printing
             double sheetH = Px(vm.SheetHeightMm);
             PrinterSheet.Width = sheetW;
             PrinterSheet.Height = sheetH;
+            // Hide page border in printing/preview-only modes
+            PrinterSheet.BorderThickness = vm.IsPrinting ? new Thickness(0) : new Thickness(1);
 
             double l = Px(vm.MarginLeftMm);
             double r = Px(vm.MarginRightMm);
@@ -166,11 +168,10 @@ namespace Envelope_printing
             {
                 _contentLayer.Children.Clear();
                 EnvelopeOutlineCanvas.Children.Clear();
-                ImageableRect.Visibility = Visibility.Visible;
+                ImageableRect.Visibility = vm.IsPrinting ? Visibility.Collapsed : Visibility.Visible;
                 return;
             }
 
-            // Keep template orientation; scale into imageable area
             double baseEnvW = Px(vm.EnvelopeWidthMm);
             double baseEnvH = Px(vm.EnvelopeHeightMm);
             double scale;
@@ -184,6 +185,8 @@ namespace Envelope_printing
             {
                 scale = vm.TemplateScalePercent /100.0;
             }
+            if (vm.FitToImageableArea) scale *=0.999;
+
             double envW = baseEnvW * scale;
             double envH = baseEnvH * scale;
 
@@ -230,14 +233,16 @@ namespace Envelope_printing
             while (_contentLayer.Children.Count > visualIndex) _contentLayer.Children.RemoveAt(_contentLayer.Children.Count -1);
 
             EnvelopeOutlineCanvas.Children.Clear();
-            // Determine overflow per side and draw template border colored by side
-            bool leftOverflow = envRect.Left < clipRect.Left;
-            bool rightOverflow = envRect.Right > clipRect.Right;
-            bool topOverflow = envRect.Top < clipRect.Top;
-            bool bottomOverflow = envRect.Bottom > clipRect.Bottom;
-            DrawTemplateBorder(envRect, leftOverflow, topOverflow, rightOverflow, bottomOverflow);
+            if (!vm.IsPrinting)
+            {
+                bool leftOverflow = envRect.Left < clipRect.Left -0.5;
+                bool rightOverflow = envRect.Right > clipRect.Right +0.5;
+                bool topOverflow = envRect.Top < clipRect.Top -0.5;
+                bool bottomOverflow = envRect.Bottom > clipRect.Bottom +0.5;
+                DrawTemplateBorder(envRect, leftOverflow, topOverflow, rightOverflow, bottomOverflow);
+            }
 
-            ImageableRect.Visibility = Visibility.Visible;
+            ImageableRect.Visibility = vm.IsPrinting ? Visibility.Collapsed : Visibility.Visible;
         }
 
         private void DrawTemplateBorder(Rect envRect, bool leftOv, bool topOv, bool rightOv, bool bottomOv)
@@ -245,13 +250,9 @@ namespace Envelope_printing
             var ok = Color.FromRgb(255,152,0); // orange normal
             var bad = Color.FromRgb(220,20,60); // red overflow
             double th =3;
-            // left side
             AddLine(new Point(envRect.Left, envRect.Top), new Point(envRect.Left, envRect.Bottom), leftOv ? bad : ok, th);
-            // top
             AddLine(new Point(envRect.Left, envRect.Top), new Point(envRect.Right, envRect.Top), topOv ? bad : ok, th);
-            // right
             AddLine(new Point(envRect.Right, envRect.Top), new Point(envRect.Right, envRect.Bottom), rightOv ? bad : ok, th);
-            // bottom
             AddLine(new Point(envRect.Left, envRect.Bottom), new Point(envRect.Right, envRect.Bottom), bottomOv ? bad : ok, th);
         }
 
@@ -264,45 +265,6 @@ namespace Envelope_printing
                 Stroke = new SolidColorBrush(color), StrokeThickness = thickness
             };
             EnvelopeOutlineCanvas.Children.Add(line);
-        }
-
-        private static double Clamp(double v, double a, double b) => v < a ? a : (v > b ? b : v);
-
-        private static (Point A, Point B)? ClipSegmentToRect(Point a, Point b, Rect rect, out bool fullyInside)
-        {
-            double x0 = a.X, y0 = a.Y, x1 = b.X, y1 = b.Y;
-            double p1 = -(x1 - x0), p2 = -p1, p3 = -(y1 - y0), p4 = -p3;
-            double q1 = x0 - rect.Left, q2 = rect.Right - x0, q3 = y0 - rect.Top, q4 = rect.Bottom - y0;
-            double u1 =0, u2 =1;
-            bool accept = true;
-            foreach (var (p, q) in new[] { (p1, q1), (p2, q2), (p3, q3), (p4, q4) })
-            {
-                if (p ==0)
-                {
-                    if (q <0) { accept = false; break; }
-                }
-                else
-                {
-                    double u = q / p;
-                    if (p <0) { if (u > u2) { accept = false; break; } if (u > u1) u1 = u; }
-                    else { if (u < u1) { accept = false; break; } if (u < u2) u2 = u; }
-                }
-            }
-            fullyInside = u1 ==0 && u2 ==1;
-            if (!accept) return null;
-            Point A = new Point(x0 + (x1 - x0) * u1, y0 + (y1 - y0) * u1);
-            Point B = new Point(x0 + (x1 - x0) * u2, y0 + (y1 - y0) * u2);
-            return (A, B);
-        }
-
-        private static Point RotatePoint(Point p, Point center, double angleDeg)
-        {
-            double a = angleDeg * Math.PI /180.0;
-            double cos = Math.Cos(a), sin = Math.Sin(a);
-            double dx = p.X - center.X; double dy = p.Y - center.Y;
-            double x = center.X + dx * cos - dy * sin;
-            double y = center.Y + dx * sin + dy * cos;
-            return new Point(x, y);
         }
 
         private ImageSource GetCachedBitmap(string path)

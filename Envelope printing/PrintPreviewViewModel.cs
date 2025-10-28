@@ -239,6 +239,7 @@ namespace Envelope_printing
  public PrintPreviewViewModel()
  {
  Templates = new ObservableCollection<Template>(_dataService.GetAllTemplates() ?? new System.Collections.Generic.List<Template>());
+ SelectedTemplate = Templates.FirstOrDefault();
  var allRecipients = _dataService.GetAllRecipients() ?? new System.Collections.Generic.List<Recipient>();
  Recipients = new ObservableCollection<Recipient>(allRecipients);
  AvailableCities = new ObservableCollection<string>(allRecipients.Select(r => r.City).Where(c => !string.IsNullOrWhiteSpace(c)).Distinct().OrderBy(c => c));
@@ -261,7 +262,6 @@ namespace Envelope_printing
 
  LoadPresets();
  LoadPrinters();
- // Ensure default printer is selected right after loading
  TrySelectDefaultPrinter();
  FilterRecipients();
  }
@@ -523,7 +523,7 @@ namespace Envelope_printing
 
  public void LoadPreviewItems()
  {
- if (SelectedTemplate == null || Recipients == null || Recipients.Count ==0)
+ if (SelectedTemplate == null)
  {
  PreviewItems.Clear();
  OnPropertyChanged(nameof(PreviewItems));
@@ -543,16 +543,13 @@ namespace Envelope_printing
  OnPropertyChanged(nameof(PreviewItems));
  }
 
- // Update texts for the current page's recipient only
- var recipient = Recipients.Skip((CurrentPage -1) * PageSize).FirstOrDefault();
- if (recipient != null)
- {
+ // Update texts for the current page's recipient if exists; otherwise keep template static text
+ var recipient = Recipients != null && Recipients.Count >0 ? Recipients.Skip((CurrentPage -1) * PageSize).FirstOrDefault() : null;
  foreach (var vmItem in PreviewItems)
  {
  var item = vmItem.Model;
- if (!string.IsNullOrEmpty(item.ContentBindingPath))
+ if (!string.IsNullOrEmpty(item.ContentBindingPath) && recipient != null)
  {
- // cache reflection lookups
  if (!_recipientPropCache.TryGetValue(item.ContentBindingPath, out var prop))
  {
  prop = typeof(Recipient).GetProperty(item.ContentBindingPath, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
@@ -563,9 +560,7 @@ namespace Envelope_printing
  }
  else
  {
- // keep original static text from template model
  vmItem.StaticText = item.StaticText;
- }
  }
  }
  }

@@ -15,8 +15,11 @@ namespace EnvelopePrinter.Core
 
         public DataService()
         {
-            var folder = AppDomain.CurrentDomain.BaseDirectory;
-            _databasePath = Path.Combine(folder, "envelopes.db");
+            // Use the same path as ApplicationDbContext: LocalAppData/EnvelopePrinter/envelopes.db
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var appFolder = Path.Combine(appData, "EnvelopePrinter");
+            if (!Directory.Exists(appFolder)) Directory.CreateDirectory(appFolder);
+            _databasePath = Path.Combine(appFolder, "envelopes.db");
 
             TryApplyMigrations();
             TryEnsureTemplateItemColumns();
