@@ -5,6 +5,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Diagnostics;
 
 namespace Envelope_printing.Designer
 {
@@ -16,19 +17,17 @@ namespace Envelope_printing.Designer
         private string _currentColorTargetProp;
 
         private bool _isDragging;
-        private int _clicks;
-        private const int DoubleClickThresholdMs = 300;
-        private System.Diagnostics.Stopwatch _clickTimer = new System.Diagnostics.Stopwatch();
+        private const double DragUpdateThreshold =0.2; // минимальный порог пикселей дл€ обновлени€ позиции
 
         private bool _isPanning;
         private Point _panStart;
         private Point _scrollStart;
 
-        private const double ArrowMargin = 10;
-        private const double ArrowWidth = 36;
+        private const double ArrowMargin =10;
+        private const double ArrowWidth =36;
         // New: extra left shifts for nicer in-panel padding in both states
-        private const double ArrowOpenExtraLeft = 12; // when panel is open, move a bit more to the left (deeper into panel)
-        private const double ArrowClosedExtraLeft = 6; // when panel is closed, nudge slightly left from the base margin
+        private const double ArrowOpenExtraLeft =24; // move slightly more to the left when panel is open
+        private const double ArrowClosedExtraLeft =8; // keep a small inset from window edge when panel is closed
 
         private bool _initialZoomApplied = false;
 
@@ -41,6 +40,10 @@ namespace Envelope_printing.Designer
 
         private double _rotationOffsetDeg; // keeps difference between item angle and mouse vector at drag start
 
+        private Stopwatch _dragStopwatch = new Stopwatch();
+        private readonly double _dragThrottleMs =1000.0 /60.0; // ~60Hz throttle
+        private bool _interactiveLowQualitySet = false;
+
         public TemplateDesignerView()
         {
             InitializeComponent();
@@ -48,6 +51,19 @@ namespace Envelope_printing.Designer
             DataContextChanged += TemplateDesignerView_DataContextChanged;
             PreviewKeyDown += TemplateDesignerView_PreviewKeyDown;
             PreviewMouseWheel += TemplateDesignerView_PreviewMouseWheel; // CTRL + wheel
+            Unloaded += TemplateDesignerView_Unloaded; // commit edits on view unload
+        }
+
+        private void TemplateDesignerView_Unloaded(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // Ensure that any focused editor (TextBox) pushes binding values back into VM
+                // Move focus away and clear it
+                FocusManager.SetFocusedElement(this, this);
+                Keyboard.ClearFocus();
+            }
+            catch { }
         }
 
         private void TemplateDesignerView_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -126,17 +142,43 @@ namespace Envelope_printing.Designer
             double targetX;
             bool isLeftOpen = (DataContext as Envelope_printing.TemplateDesignerViewModel)?.IsLeftPanelVisible == true;
             double panelWidth = LeftOverlayPanel != null && LeftOverlayPanel.ActualWidth >0 ? LeftOverlayPanel.ActualWidth :280;
+            var tb = ArrowToggle.Content as TextBlock;
             if (isLeftOpen && panelWidth >0)
             {
-                // Position near the right inner edge of the panel, then move a bit further left for nicer padding
-                targetX = Math.Max(ArrowMargin, panelWidth - ArrowWidth - ArrowMargin - ArrowOpenExtraLeft);
-                (ArrowToggle.Content as TextBlock)!.Text = "\uE76B"; // left arrow
+                // When panel is open: compute button so its right edge is inset from the panel's right outer edge
+                // by ArrowOpenExtraLeft (same as bottom inset). We'll compute panel's absolute right and set
+                // desired absolute left for the button accordingly.
+                double desiredAbsoluteLeft = ArrowMargin; // fallback
+                try
+                {
+                    if (LeftOverlayPanel != null && Root != null)
+                    {
+                        var panelOrigin = LeftOverlayPanel.TransformToAncestor(Root).Transform(new Point(0,0));
+                        double panelRightAbsolute = panelOrigin.X + LeftOverlayPanel.ActualWidth;
+                        // desired left so that button right edge = panelRightAbsolute - ArrowOpenExtraLeft
+                        desiredAbsoluteLeft = panelRightAbsolute - ArrowOpenExtraLeft - ArrowWidth;
+                    }
+                    else
+                    {
+                        desiredAbsoluteLeft = ArrowMargin + panelWidth - ArrowWidth - ArrowOpenExtraLeft;
+                    }
+                }
+                catch
+                {
+                    desiredAbsoluteLeft = ArrowMargin + panelWidth - ArrowWidth - ArrowOpenExtraLeft;
+                }
+                // Translate.X = desiredAbsoluteLeft - ArrowToggle.Margin.Left
+                targetX = desiredAbsoluteLeft - (ArrowToggle?.Margin.Left ??0);
+                if (tb != null) tb.Text = "\uE76B"; // left arrow
             }
             else
             {
-                // Base margin from left, then nudge left
-                targetX = Math.Max(0, ArrowMargin - ArrowClosedExtraLeft);
-                (ArrowToggle.Content as TextBlock)!.Text = "\uE76C"; // right arrow
+                // When panel is closed, move to the very left window edge with small inset (absolute left = ArrowClosedExtraLeft).
+                // TranslateTransform.X = desiredAbsoluteLeft - baseLeft
+                double baseLeft = ArrowToggle?.Margin.Left ??0;
+                double desiredAbsoluteLeft = ArrowClosedExtraLeft;
+                targetX = desiredAbsoluteLeft - baseLeft;
+                if (tb != null) tb.Text = "\uE76C"; // right arrow
             }
             var tt = ArrowToggle.RenderTransform as System.Windows.Media.TranslateTransform;
             if (tt == null) return;
@@ -151,6 +193,59 @@ namespace Envelope_printing.Designer
             }
         }
 
+        private void OnArrowToggleClick(object sender, RoutedEventArgs e)
+        {
+            // Toggle is bound to VM.IsLeftPanelVisible two-way; ensure arrow animates to new location
+            UpdateArrowPosition(animated: true);
+            e.Handled = true;
+        }
+
+        private static void SetCacheForItemVisual(FrameworkElement fe, bool enable)
+        {
+            var root = FindAncestor<Grid>(fe);
+            if (root != null)
+            {
+                if (enable)
+                {
+                    try
+                    {
+                        // Compute render scale to create cache at correct resolution and avoid blur when scaled
+                        float renderScale =1f;
+                        // Try to get zoom factor from nearest TemplateDesignerView's DataContext
+                        var tdv = FindAncestor<TemplateDesignerView>(fe);
+                        if (tdv != null && tdv.DataContext is Envelope_printing.TemplateDesignerViewModel vm)
+                        {
+                            double zoom = vm.ZoomFactor;
+                            // Designer has a fixed layout scale (px per mm) of3.78 in XAML; include it
+                            const double basePxPerMm =3.78;
+                            var dpi = VisualTreeHelper.GetDpi(fe);
+                            renderScale = (float)(basePxPerMm * zoom * dpi.DpiScaleX);
+                        }
+                        else
+                        {
+                            var dpi = VisualTreeHelper.GetDpi(fe);
+                            renderScale = (float)dpi.DpiScaleX;
+                        }
+                        if (renderScale <1f) renderScale =1f;
+                        root.CacheMode = new BitmapCache { RenderAtScale = renderScale };
+                        // Prefer high-quality scaling for cached visuals to reduce perceived blurriness
+                        RenderOptions.SetBitmapScalingMode(root, BitmapScalingMode.HighQuality);
+                    }
+                    catch
+                    {
+                        // fallback to simple cache
+                        root.CacheMode = new BitmapCache();
+                    }
+                }
+                else
+                {
+                    root.CacheMode = null;
+                    // reset scaling mode
+                    RenderOptions.SetBitmapScalingMode(root, BitmapScalingMode.LowQuality);
+                }
+            }
+        }
+
         // dragging and hide panel handlers unchanged below
         private void OnItemMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
@@ -160,20 +255,9 @@ namespace Envelope_printing.Designer
                 var item = element?.DataContext as Envelope_printing.TemplateItemViewModel;
                 if (item == null) return;
 
-                // Click counting for double-click
-                if (!_clickTimer.IsRunning || _clickTimer.ElapsedMilliseconds > DoubleClickThresholdMs)
+                if (e.ClickCount >=2)
                 {
-                    _clicks = 0;
-                    _clickTimer.Restart();
-                }
-                _clicks++;
-
-                if (_clicks >= 2)
-                {
-                    // Double click: open item properties panel
                     vm.ReopenItemProperties(item);
-                    _clicks = 0;
-                    _clickTimer.Reset();
                     e.Handled = true;
                     return;
                 }
@@ -183,6 +267,19 @@ namespace Envelope_printing.Designer
                 _dragStartPoint = e.GetPosition(ItemsCanvas);
                 _dragStartItemPos = new Point(item.Transform.X, item.Transform.Y);
                 vm.StartDragging(item, _dragStartPoint);
+                SetCacheForItemVisual(element, true); // ускор€ем перетаскивание
+                // Start throttle timer and reduce rendering quality for smoother dragging on high-refresh displays
+                _dragStopwatch.Restart();
+                try
+                {
+                    // Lower bitmap scaling quality globally on the designer root to reduce GPU load
+                    if (Root != null)
+                    {
+                        RenderOptions.SetBitmapScalingMode(Root, BitmapScalingMode.LowQuality);
+                        _interactiveLowQualitySet = true;
+                    }
+                }
+                catch { }
                 element?.CaptureMouse();
                 e.Handled = true;
             }
@@ -196,11 +293,16 @@ namespace Envelope_printing.Designer
                 var currentOnCanvas = e.GetPosition(ItemsCanvas);
                 var dx = currentOnCanvas.X - _dragStartPoint.X;
                 var dy = currentOnCanvas.Y - _dragStartPoint.Y;
+                if (Math.Abs(dx) < DragUpdateThreshold && Math.Abs(dy) < DragUpdateThreshold) return; // избегаем лишних апдейтов
                 if (vm.SelectedTemplateItem != null)
                 {
-                    // With Rotate then Translate, translation is applied in canvas space; add raw dx/dy
-                    vm.SelectedTemplateItem.Transform.X = _dragStartItemPos.X + dx;
-                    vm.SelectedTemplateItem.Transform.Y = _dragStartItemPos.Y + dy;
+                    // Throttle updates to reduce updates on high-refresh-rate displays
+                    if (!_dragStopwatch.IsRunning || _dragStopwatch.Elapsed.TotalMilliseconds >= _dragThrottleMs)
+                    {
+                        vm.SelectedTemplateItem.Transform.X = _dragStartItemPos.X + dx;
+                        vm.SelectedTemplateItem.Transform.Y = _dragStartItemPos.Y + dy;
+                        _dragStopwatch.Restart();
+                    }
                 }
             }
         }
@@ -210,12 +312,32 @@ namespace Envelope_printing.Designer
             if (_isDragging)
             {
                 _isDragging = false;
-                if (sender is IInputElement el) el.ReleaseMouseCapture();
+                if (sender is FrameworkElement el)
+                {
+                    el.ReleaseMouseCapture();
+                    SetCacheForItemVisual(el, false); // снимаем кеш
+                }
                 if (DataContext is Envelope_printing.TemplateDesignerViewModel vm)
                 {
-                    vm.SelectedTemplateItem.PositionX = vm.SelectedTemplateItem.Transform.X;
-                    vm.SelectedTemplateItem.PositionY = vm.SelectedTemplateItem.Transform.Y;
-                    vm.StopDragging();
+                    if (vm.SelectedTemplateItem != null)
+                    {
+                        // Ensure final position applied
+                        vm.SelectedTemplateItem.Transform.X = vm.SelectedTemplateItem.Transform.X;
+                        vm.SelectedTemplateItem.Transform.Y = vm.SelectedTemplateItem.Transform.Y;
+                        vm.SelectedTemplateItem.PositionX = vm.SelectedTemplateItem.Transform.X;
+                        vm.SelectedTemplateItem.PositionY = vm.SelectedTemplateItem.Transform.Y;
+                        vm.StopDragging();
+                    }
+                    // Restore high-quality scaling after drag
+                    try
+                    {
+                        if (_interactiveLowQualitySet && Root != null)
+                        {
+                            RenderOptions.SetBitmapScalingMode(Root, BitmapScalingMode.HighQuality);
+                            _interactiveLowQualitySet = false;
+                        }
+                    }
+                    catch { }
                 }
             }
         }
@@ -224,7 +346,31 @@ namespace Envelope_printing.Designer
         {
             if (DataContext is Envelope_printing.TemplateDesignerViewModel vm)
             {
-                vm.SelectedTemplateItem = null; // clear selection -> outline hides
+                // If double-click on empty canvas area (not on an item) -> open canvas properties
+                if (e.ClickCount >=2)
+                {
+                    var pos = e.GetPosition(ItemsCanvas);
+                    var hit = VisualTreeHelper.HitTest(ItemsCanvas, pos);
+                    bool hitItem = false;
+                    if (hit != null)
+                    {
+                        // if any ancestor ContentPresenter (ItemsControl container) found, it's an item
+                        DependencyObject cur = hit.VisualHit;
+                        while (cur != null && !hitItem)
+                        {
+                            if (cur is ContentPresenter) { hitItem = true; break; }
+                            cur = VisualTreeHelper.GetParent(cur);
+                        }
+                    }
+                    if (!hitItem)
+                    {
+                        vm.ReopenCanvasProperties();
+                        e.Handled = true;
+                        return;
+                    }
+                }
+                // single click on empty canvas clears selection and hides properties
+                vm.SelectedTemplateItem = null;
                 vm.HideProperties();
             }
         }
@@ -279,20 +425,39 @@ namespace Envelope_printing.Designer
             }
         }
 
+        // Click on item in the canvas items ListBox should only select item without opening properties
+        private void OnCanvasItemListClick(object sender, MouseButtonEventArgs e)
+        {
+            if (DataContext is Envelope_printing.TemplateDesignerViewModel vm)
+            {
+                // ѕринудительно выдел€ем элемент, но не открываем свойства
+                if (sender is ListBoxItem lbi && lbi.DataContext is Envelope_printing.TemplateItemViewModel item)
+                {
+                    vm.SelectedTemplateItem = item;
+                }
+                e.Handled = true; // не даЄм всплыть до обработчиков, которые могли бы открыть свойства
+            }
+        }
+
         private void OnResizeStart(object sender, DragStartedEventArgs e)
         {
             if (sender is FrameworkElement fe && fe.DataContext is Envelope_printing.TemplateItemViewModel vm)
             {
                 _resizeStart = Mouse.GetPosition(ItemsCanvas);
                 _startWidth = vm.Width; _startHeight = vm.Height;
+                SetCacheForItemVisual(fe, true); // кеширование на врем€ ресайза
             }
         }
         private void OnResizeEnd(object sender, DragCompletedEventArgs e)
         {
             _startWidth = _startHeight =0;
+            if (sender is FrameworkElement fe)
+            {
+                SetCacheForItemVisual(fe, false);
+            }
             if (DataContext is Envelope_printing.TemplateDesignerViewModel vm)
             {
-                vm.ValidateAllItemsBounds();
+                vm.RequestValidateAllItemsBounds();
             }
         }
 
@@ -366,6 +531,7 @@ namespace Envelope_printing.Designer
             var dy0 = m0.Y - _rotateStartCenter.Y;
             var initialMouseAngle = Math.Atan2(dy0, dx0) *180.0 / Math.PI;
             _rotationOffsetDeg = _startAngle - initialMouseAngle;
+            SetCacheForItemVisual(fe, true); // кеширование на врем€ вращени€
         }
         private static T FindAncestor<T>(DependencyObject child) where T: DependencyObject
         {
@@ -393,9 +559,31 @@ namespace Envelope_printing.Designer
         }
         private void OnRotateEnd(object sender, DragCompletedEventArgs e)
         {
+            if (sender is FrameworkElement fe)
+            {
+                SetCacheForItemVisual(fe, false);
+            }
             if (DataContext is Envelope_printing.TemplateDesignerViewModel vm)
             {
-                vm.ValidateAllItemsBounds();
+                vm.RequestValidateAllItemsBounds();
+            }
+        }
+
+        private void OnCanvasPropsDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (DataContext is Envelope_printing.TemplateDesignerViewModel vm)
+            {
+                vm.ReopenCanvasProperties();
+                e.Handled = true;
+            }
+        }
+
+        private void OnCanvasPropsClick(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ClickCount >=2 && DataContext is Envelope_printing.TemplateDesignerViewModel vm)
+            {
+                vm.ReopenCanvasProperties();
+                e.Handled = true;
             }
         }
     }

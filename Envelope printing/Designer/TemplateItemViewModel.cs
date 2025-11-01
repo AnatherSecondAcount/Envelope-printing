@@ -101,7 +101,10 @@ namespace Envelope_printing
         public TextAlignment TextAlignment { get => SafeParseEnum(Model.TextAlignment, System.Windows.TextAlignment.Left); set { Model.TextAlignment = value.ToString(); OnPropertyChanged(); OnPropertyChanged(nameof(TextAlignmentString)); } }
         public double Padding { get => Model.Padding; set { Model.Padding = value; OnPropertyChanged(); } }
         public double Opacity { get => Model.Opacity; set { Model.Opacity = value; OnPropertyChanged(); } }
-        public double RotationDegrees { get => Model.RotationDegrees; set { Model.RotationDegrees = value; Rotate.Angle = value; OnPropertyChanged(); } }
+        public double RotationDegrees { get => Model.RotationDegrees; set { var rounded = Math.Round(value); // шаг1°
+ // нормализуем в диапазон [-180;180)
+ while (rounded >=180) rounded -=360; while (rounded < -180) rounded +=360;
+ Model.RotationDegrees = rounded; Rotate.Angle = rounded; OnPropertyChanged(); } }
 
         public int ZIndex { get => Model.ZIndex; set { var clamped = Math.Max(0, Math.Min(10, value)); Model.ZIndex = clamped; OnPropertyChanged(); } }
         public bool IsItalic { get => Model.IsItalic; set { Model.IsItalic = value; OnPropertyChanged(); OnPropertyChanged(nameof(FontStyle)); } }

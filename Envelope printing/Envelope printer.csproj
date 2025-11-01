@@ -2,24 +2,27 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows10.0.26100.0</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <RootNamespace>Envelope_printing</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <AssemblyName>EnvelopePrinter</AssemblyName>
-    <Company>AnatherSecondAcount</Company>
-    <Product>Envelope Printer</Product>
-    <Authors>AnatherSecondAcount</Authors>
-    <Description>Tool for printing envelopes with templates.</Description>
+    <AssemblyName>Печать конвертов</AssemblyName>
+    <ApplicationTitle>Печать конвертов</ApplicationTitle>
+    <Company>РУП "Витебскэнерго" филиал "Учебный центр"</Company>
+    <Product>Печать конвертов</Product>
+    <Authors>Отдел цифровизации</Authors>
+    <Description>Набор инструментов для создания и печати конвертов</Description>
     <RepositoryUrl>https://github.com/AnatherSecondAcount/Envelope-printing</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <Deterministic>true</Deterministic>
-    <Copyright>Copyright (c) AnatherSecondAcount</Copyright>
-    <Version>1.0.0.0</Version>
-    <FileVersion>1.0.0.0</FileVersion>
+    <Copyright>Copyright (c) Отдел цифровизации </Copyright>
+    <!-- Версии для сборки/файла/ассембли: ставим0.0.0.0, чтобы апдейтер видел новую версию в релизе -->
+    <Version>0.0.0.0</Version>
+    <FileVersion>0.0.0.0</FileVersion>
+    <AssemblyVersion>0.0.0.0</AssemblyVersion>
     <NeutralLanguage>ru-RU</NeutralLanguage>
-    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <ApplicationIcon>AppLogo.ico</ApplicationIcon>
   </PropertyGroup>
 

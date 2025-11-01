@@ -12,16 +12,19 @@
  <Border x:Name="ImageableRect" BorderThickness="0" Background="#08000000" HorizontalAlignment="Left" VerticalAlignment="Top" Panel.ZIndex="0"/>
 
  <!-- Content canvas (clipped to true imageable area by code) -->
- <Canvas x:Name="PreviewCanvas" Panel.ZIndex="1"/>
+ <Canvas x:Name="PreviewCanvas" Panel.ZIndex="1" IsHitTestVisible="False"/>
 
- <!-- Per-side outline canvas for envelope (lines), clipped to imageable area -->
- <Canvas x:Name="EnvelopeOutlineCanvas" Panel.ZIndex="2"/>
+ <!-- Per-side outline canvas for envelope (lines), clipped to page by code -->
+ <Canvas x:Name="EnvelopeOutlineCanvas" Panel.ZIndex="2" IsHitTestVisible="False"/>
+
+ <!-- Imageable area border highlight (colored sides when overflow), clipped to page by code -->
+ <Canvas x:Name="ImageableBorderCanvas" Panel.ZIndex="3" IsHitTestVisible="False"/>
 
  <!-- Legacy outline (hidden) -->
  <Border x:Name="EnvelopeOutlineRect" Visibility="Collapsed" BorderThickness="0" BorderBrush="#00FFFFFF" Background="#00FFFFFF" HorizontalAlignment="Left" VerticalAlignment="Top" Panel.ZIndex="2"/>
 
  <!-- Overlay content that is not touched by renderer -->
- <ContentPresenter x:Name="OverlayPresenter" Panel.ZIndex="3"
+ <ContentPresenter x:Name="OverlayPresenter" Panel.ZIndex="4"
  Content="{Binding OverlayContent, RelativeSource={RelativeSource AncestorType=UserControl}}"
  IsHitTestVisible="False"/>
  </Grid>

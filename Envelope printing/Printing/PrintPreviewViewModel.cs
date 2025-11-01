@@ -1,4 +1,5 @@
 using EnvelopePrinter.Core;
+using Envelope_printing.Utils;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
@@ -9,11 +10,14 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Windows; // for Application
+using System.Windows.Threading;
 
 namespace Envelope_printing
 {
  public partial class PrintPreviewViewModel : INotifyPropertyChanged
  {
+ private bool _previewGeometryDirty; // marks that preview geometry changed (orientation/media)
+
  private readonly DataService _dataService = new();
  private readonly FilterPresetsService _presetsService = new();
 
@@ -47,13 +51,38 @@ namespace Envelope_printing
  private PageSizeOption _selectedPageSize;
  public PageSizeOption SelectedPageSize { get => _selectedPageSize; set { _selectedPageSize = value; OnPropertyChanged(); UpdateSheetSizeFromPageSize(); } }
 
+ // Input bin (tray)
+ public ObservableCollection<InputBin> AvailableInputBins { get; } = new();
+ private InputBin? _selectedInputBin;
+ public InputBin? SelectedInputBin { get => _selectedInputBin; set { _selectedInputBin = value; OnPropertyChanged(); UpdatePrinterMargins(); } }
+ public bool ShowInputBin => AvailableInputBins != null && AvailableInputBins.Count >1;
+
+ // Media type
+ public ObservableCollection<PageMediaType> AvailableMediaTypes { get; } = new();
+ private PageMediaType? _selectedMediaType;
+ public PageMediaType? SelectedMediaType { get => _selectedMediaType; set { _selectedMediaType = value; OnPropertyChanged(); UpdatePrinterMargins(); } }
+ public bool ShowMediaType => AvailableMediaTypes != null && AvailableMediaTypes.Any(mt => mt != PageMediaType.Unknown);
+
  private double _sheetWidthMm =210;
  public double SheetWidthMm { get => _sheetWidthMm; set { _sheetWidthMm = value; OnPropertyChanged(); } }
  private double _sheetHeightMm =297;
  public double SheetHeightMm { get => _sheetHeightMm; set { _sheetHeightMm = value; OnPropertyChanged(); } }
 
  private bool _isPrinterLandscape;
- public bool IsPrinterLandscape { get => _isPrinterLandscape; set { _isPrinterLandscape = value; OnPropertyChanged(); UpdateSheetSizeFromPageSize(); } }
+ public bool IsPrinterLandscape
+ {
+ get => _isPrinterLandscape;
+ set
+ {
+ if (_isPrinterLandscape == value) return;
+ _isPrinterLandscape = value;
+ OnPropertyChanged();
+ UpdateSheetSizeFromPageSize();
+ // After real printing drivers sometimes leave cached landscape settings; force refresh of page sequence and preview
+ RebuildPageSequence();
+ LoadPreviewItems();
+ }
+ }
 
  // Rotation of the whole envelope content (0/90/180/270)
  private int _envelopeRotationDegrees =0;
@@ -69,6 +98,10 @@ namespace Envelope_printing
  OnPropertyChanged();
  }
  }
+
+ // Print status text (for UI progress panel)
+ private string _printStatus;
+ public string PrintStatus { get => _printStatus; set { _printStatus = value; OnPropertyChanged(); } }
 
  // Envelope size (from template, exposed for preview refresh)
  public double EnvelopeWidthMm => SelectedTemplate?.EnvelopeWidth ??0;
@@ -92,16 +125,16 @@ namespace Envelope_printing
  private int _zoomPercentage =100;
  public int ZoomPercentage { get => _zoomPercentage; set { if (_zoomPercentage == value) return; _zoomPercentage = value <20 ?20 : (value >200 ?200 : value); OnPropertyChanged(); OnPropertyChanged(nameof(ZoomFactor)); } }
  public double ZoomFactor => ZoomPercentage /100.0;
- public ICommand ZoomInCommand { get; }
- public ICommand ZoomOutCommand { get; }
- public ICommand ResetZoomCommand { get; }
- public ICommand OpenFullPreviewCommand { get; }
+ public ICommand ZoomInCommand { get; private set; }
+ public ICommand ZoomOutCommand { get; private set; }
+ public ICommand ResetZoomCommand { get; private set; }
+ public ICommand OpenFullPreviewCommand { get; private set; }
 
  // Copies
  private int _copies =1;
  public int Copies { get => _copies; set { _copies = value <1 ?1 : value; OnPropertyChanged(); } }
- public ICommand IncreaseCopiesCommand { get; }
- public ICommand DecreaseCopiesCommand { get; }
+ public ICommand IncreaseCopiesCommand { get; private set; }
+ public ICommand DecreaseCopiesCommand { get; private set; }
 
  // Margins from printer (read-only for bindings)
  private double _marginLeftMm, _marginTopMm, _marginRightMm, _marginBottomMm;
@@ -160,8 +193,8 @@ namespace Envelope_printing
  {
  var pages = GetPagesToPrint();
  if (pages == null || pages.Count ==0) return "Нет страниц для печати";
- if (pages.Count <=10) return "Страницы: " + string.Join(", ", pages);
- return $"Страницы: {pages.First()}-{pages.Last()} (всего {pages.Count})";
+ if (pages.Count <=10) return "Выбраны: " + string.Join(", ", pages);
+ return $"Выбраны: {pages.First()}-{pages.Last()} (всего {pages.Count})";
  }
  }
 
@@ -181,12 +214,12 @@ namespace Envelope_printing
  public ObservableCollection<FilterPreset> Presets { get; } = new();
  private FilterPreset _selectedPreset;
  public FilterPreset SelectedPreset { get => _selectedPreset; set { _selectedPreset = value; OnPropertyChanged(); ApplyPreset(value); } }
- public ICommand SavePresetCommand { get; }
- public ICommand DeletePresetCommand { get; }
+ public ICommand SavePresetCommand { get; private set; }
+ public ICommand DeletePresetCommand { get; private set; }
 
  // Navigation
- public ICommand PrevPageCommand { get; }
- public ICommand NextPageCommand { get; }
+ public ICommand PrevPageCommand { get; private set; }
+ public ICommand NextPageCommand { get; private set; }
 
  // Print progress
  private bool _isPrinting;
@@ -236,25 +269,29 @@ namespace Envelope_printing
  return _pageSequence[idx -1];
  }
 
+ // Debounce timer and cache
+ private readonly LruCache<string, (double left, double top, double right, double bottom)> _marginsCache = new(64);
+ private readonly DispatcherTimer _marginsDebounceTimer;
+ private string _pendingMarginsKey;
+
  public PrintPreviewViewModel()
  {
+ // Init debounce timer before any calls to UpdatePrinterMargins()
+ _marginsDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+ _marginsDebounceTimer.Tick += (s, e) =>
+ {
+ var key = _pendingMarginsKey; _pendingMarginsKey = null; _marginsDebounceTimer.Stop();
+ if (!string.IsNullOrEmpty(key)) ApplyCachedOrComputeMargins(key);
+ };
+
+ InitializeCommands();
  Templates = new ObservableCollection<Template>(_dataService.GetAllTemplates() ?? new System.Collections.Generic.List<Template>());
- SelectedTemplate = Templates.FirstOrDefault();
+ // Do not auto-select a template to speed up initial load
+ SelectedTemplate = null;
  var allRecipients = _dataService.GetAllRecipients() ?? new System.Collections.Generic.List<Recipient>();
  Recipients = new ObservableCollection<Recipient>(allRecipients);
  AvailableCities = new ObservableCollection<string>(allRecipients.Select(r => r.City).Where(c => !string.IsNullOrWhiteSpace(c)).Distinct().OrderBy(c => c));
  SelectedCity = AvailableCities.FirstOrDefault();
-
- PrevPageCommand = new RelayCommand(_ => { RebuildPageSequence(); CurrentPage = PrevInSequence(CurrentPage); });
- NextPageCommand = new RelayCommand(_ => { RebuildPageSequence(); CurrentPage = NextInSequence(CurrentPage); });
- SavePresetCommand = new RelayCommand(SavePreset);
- DeletePresetCommand = new RelayCommand(DeletePreset);
- IncreaseCopiesCommand = new RelayCommand(_ => Copies++);
- DecreaseCopiesCommand = new RelayCommand(_ => { if (Copies >1) Copies--; });
- ZoomInCommand = new RelayCommand(_ => ZoomPercentage = System.Math.Min(200, ZoomPercentage +10));
- ZoomOutCommand = new RelayCommand(_ => ZoomPercentage = System.Math.Max(20, ZoomPercentage -10));
- ResetZoomCommand = new RelayCommand(_ => ZoomPercentage =100);
- OpenFullPreviewCommand = new RelayCommand(_ => OpenFullPreviewWindow());
 
  // defaults for print range
  IsRangeAll = true;
@@ -270,10 +307,34 @@ namespace Envelope_printing
  public PrintPreviewViewModel(bool skipInitialization)
  {
  if (!skipInitialization) throw new InvalidOperationException("Use default constructor for UI; for printing pass true.");
+ _marginsDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+ _marginsDebounceTimer.Tick += (s, e) =>
+ {
+ var key = _pendingMarginsKey; _pendingMarginsKey = null; _marginsDebounceTimer.Stop();
+ if (!string.IsNullOrEmpty(key)) ApplyCachedOrComputeMargins(key);
+ };
+ InitializeCommands();
  Templates = new ObservableCollection<Template>();
  Recipients = new ObservableCollection<Recipient>();
  AvailableCities = new ObservableCollection<string>();
  PreviewItems = new ObservableCollection<TemplateItemViewModel>();
+ // reasonable defaults
+ IsRangeAll = true;
+ RangeExpression = "1-1";
+ }
+
+ private void InitializeCommands()
+ {
+ PrevPageCommand = new RelayCommand(_ => { RebuildPageSequence(); CurrentPage = PrevInSequence(CurrentPage); });
+ NextPageCommand = new RelayCommand(_ => { RebuildPageSequence(); CurrentPage = NextInSequence(CurrentPage); });
+ SavePresetCommand = new RelayCommand(SavePreset);
+ DeletePresetCommand = new RelayCommand(DeletePreset);
+ IncreaseCopiesCommand = new RelayCommand(_ => Copies++);
+ DecreaseCopiesCommand = new RelayCommand(_ => { if (Copies >1) Copies--; });
+ ZoomInCommand = new RelayCommand(_ => ZoomPercentage = System.Math.Min(200, ZoomPercentage +10));
+ ZoomOutCommand = new RelayCommand(_ => ZoomPercentage = System.Math.Max(20, ZoomPercentage -10));
+ ResetZoomCommand = new RelayCommand(_ => ZoomPercentage =100);
+ OpenFullPreviewCommand = new RelayCommand(_ => OpenFullPreviewWindow());
  }
 
  private void OpenFullPreviewWindow()
@@ -291,7 +352,6 @@ namespace Envelope_printing
  var queues = server.GetPrintQueues(new[] { EnumeratedPrintQueueTypes.Local, EnumeratedPrintQueueTypes.Connections });
  Printers.Clear();
  foreach (var q in queues) Printers.Add(q);
- // don't set SelectedPrinter here; call TrySelectDefaultPrinter which also triggers sizes
  TrySelectDefaultPrinter();
  }
  catch { }
@@ -305,7 +365,6 @@ namespace Envelope_printing
  var def = server.DefaultPrintQueue;
  if (def != null)
  {
- // if the same queue exists in Printers list, prefer that instance
  var match = Printers.FirstOrDefault(p => string.Equals(p.FullName, def.FullName, StringComparison.OrdinalIgnoreCase));
  SelectedPrinter = match ?? def;
  }
@@ -318,19 +377,86 @@ namespace Envelope_printing
  {
  if (Printers.Count >0) SelectedPrinter = Printers[0];
  }
+ finally
+ {
+ MarkPreviewGeometryDirty();
+ }
+ }
+
+ private void MarkPreviewGeometryDirty()
+ {
+ _previewGeometryDirty = true;
+ OnPropertyChanged(nameof(SheetWidthMm));
+ OnPropertyChanged(nameof(SheetHeightMm));
  }
 
  private void LoadPageSizes()
  {
  AvailablePageSizes.Clear();
- if (SelectedPrinter == null) { SelectedPageSize = null; return; }
+ AvailableInputBins.Clear();
+ AvailableMediaTypes.Clear();
+ if (SelectedPrinter == null) { SelectedPageSize = null; SelectedInputBin = null; SelectedMediaType = null; OnPropertyChanged(nameof(ShowInputBin)); OnPropertyChanged(nameof(ShowMediaType)); return; }
  try
  {
  var caps = SelectedPrinter.GetPrintCapabilities();
  var list = caps?.PageMediaSizeCapability ?? new System.Collections.ObjectModel.ReadOnlyCollection<PageMediaSize>(new System.Collections.Generic.List<PageMediaSize>());
  foreach (var m in list) AvailablePageSizes.Add(new PageSizeOption(m));
+
+ var ticket = SelectedPrinter.UserPrintTicket ?? SelectedPrinter.DefaultPrintTicket;
+ if (ticket != null)
+ {
+ bool landscape = ticket.PageOrientation == PageOrientation.Landscape;
+ if (ticket.PageOrientation == null || ticket.PageOrientation == PageOrientation.Unknown)
+ {
+ var w = Units.DiuToMm(ticket.PageMediaSize?.Width ??0);
+ var h = Units.DiuToMm(ticket.PageMediaSize?.Height ??0);
+ landscape = w > h;
+ }
+ IsPrinterLandscape = landscape;
+ }
+
+ if (caps?.InputBinCapability != null)
+ {
+ foreach (var bin in caps.InputBinCapability) AvailableInputBins.Add(bin);
+ if (ticket?.InputBin != null && AvailableInputBins.Contains(ticket.InputBin.Value)) SelectedInputBin = ticket.InputBin;
+ else SelectedInputBin = AvailableInputBins.FirstOrDefault();
+ }
+ else
+ {
+ SelectedInputBin = null;
+ }
+ OnPropertyChanged(nameof(ShowInputBin));
+
+ if (caps?.PageMediaTypeCapability != null)
+ {
+ foreach (var mt in caps.PageMediaTypeCapability) AvailableMediaTypes.Add(mt);
+ if (ticket?.PageMediaType != null && AvailableMediaTypes.Contains(ticket.PageMediaType.Value)) SelectedMediaType = ticket.PageMediaType;
+ else SelectedMediaType = AvailableMediaTypes.FirstOrDefault(mt => mt != PageMediaType.Unknown);
+ }
+ else
+ {
+ SelectedMediaType = null;
+ }
+ OnPropertyChanged(nameof(ShowMediaType));
+
+ PageSizeOption best = null;
+ if (ticket?.PageMediaSize?.PageMediaSizeName != null)
+ {
+ var name = ticket.PageMediaSize.PageMediaSizeName.Value;
+ best = AvailablePageSizes.FirstOrDefault(p => p.Media.PageMediaSizeName == name);
+ }
+ if (best == null && ticket?.PageMediaSize != null)
+ {
+ double tw = Units.DiuToMm(ticket.PageMediaSize.Width ??0);
+ double th = Units.DiuToMm(ticket.PageMediaSize.Height ??0);
+ double pw = Math.Min(tw, th);
+ double ph = Math.Max(tw, th);
+ best = AvailablePageSizes
+ .OrderBy(p => Math.Abs(Math.Min(p.WidthMm, p.HeightMm) - pw) + Math.Abs(Math.Max(p.WidthMm, p.HeightMm) - ph))
+ .FirstOrDefault();
+ }
  var a4 = AvailablePageSizes.FirstOrDefault(p => p.Media.PageMediaSizeName == PageMediaSizeName.ISOA4);
- SelectedPageSize = a4 ?? AvailablePageSizes.FirstOrDefault();
+ SelectedPageSize = best ?? a4 ?? AvailablePageSizes.FirstOrDefault();
  }
  catch { SelectedPageSize = null; }
  UpdatePrinterMargins();
@@ -346,7 +472,10 @@ namespace Envelope_printing
  }
  else { SheetWidthMm =210; SheetHeightMm =297; }
  UpdatePrinterMargins();
- // No need to reload items; geometry only
+ _previewGeometryDirty = true;
+ OnPropertyChanged(nameof(SheetWidthMm));
+ OnPropertyChanged(nameof(SheetHeightMm));
+ LoadPreviewItems();
  }
 
  private void ApplyFilters()
@@ -405,14 +534,14 @@ namespace Envelope_printing
  RebuildPageSequence();
  }
 
- private void UpdatePrinterMargins()
+ private void ApplyCachedOrComputeMargins(string key)
  {
  double leftMm =0, topMm =0, rightMm =0, bottomMm =0;
  try
  {
- if (SelectedPrinter != null)
+ if (SelectedPrinter != null && !string.IsNullOrEmpty(key))
  {
- // Build a ticket that reflects selected media size and orientation
+ // compute margins (may be expensive)
  var ticket = new PrintTicket();
  if (SelectedPageSize?.Media?.PageMediaSizeName != null)
  {
@@ -420,16 +549,17 @@ namespace Envelope_printing
  }
  else if (SelectedPageSize != null)
  {
- // Fallback: explicit size in DIU
  ticket.PageMediaSize = new PageMediaSize(Units.MmToDiu(SelectedPageSize.WidthMm), Units.MmToDiu(SelectedPageSize.HeightMm));
  }
  ticket.PageOrientation = IsPrinterLandscape ? PageOrientation.Landscape : PageOrientation.Portrait;
+ if (SelectedInputBin != null) ticket.InputBin = SelectedInputBin.Value;
+ if (SelectedMediaType != null) ticket.PageMediaType = SelectedMediaType.Value;
 
  var caps = SelectedPrinter.GetPrintCapabilities(ticket);
  var area = caps?.PageImageableArea;
  if (area != null)
  {
- double pageW = Units.MmToDiu(SheetWidthMm); // already oriented by UpdateSheetSizeFromPageSize
+ double pageW = Units.MmToDiu(SheetWidthMm);
  double pageH = Units.MmToDiu(SheetHeightMm);
 
  double oW = area.OriginWidth;
@@ -437,8 +567,6 @@ namespace Envelope_printing
  double eW = area.ExtentWidth;
  double eH = area.ExtentHeight;
 
- // Heuristic: some drivers return portrait values even when ticket is landscape.
- // If orientation is landscape but imageable area looks portrait (eW < eH while pageW > pageH), swap axes.
  bool needSwap = IsPrinterLandscape && (eW < eH && pageW > pageH);
  if (needSwap)
  {
@@ -452,6 +580,9 @@ namespace Envelope_printing
  topMm = Units.DiuToMm(oH);
  rightMm = Units.DiuToMm(rDiu);
  bottomMm = Units.DiuToMm(bDiu);
+
+ // cache
+ _marginsCache.Add(key, (leftMm, topMm, rightMm, bottomMm));
  }
  }
  }
@@ -460,7 +591,6 @@ namespace Envelope_printing
  MarginTopMm = topMm;
  MarginRightMm = rightMm;
  MarginBottomMm = bottomMm;
- // geometry only
  }
 
  private System.Collections.Generic.IEnumerable<Recipient> ApplySorting(System.Collections.Generic.IEnumerable<Recipient> query)
@@ -600,6 +730,34 @@ namespace Envelope_printing
  }
  }
  return set.ToList();
+ }
+
+ private void UpdatePrinterMargins()
+ {
+ // Build key for current relevant printer settings
+ var keyParts = new List<string>
+ {
+ SelectedPrinter?.FullName ?? string.Empty,
+ SelectedPageSize?.Media?.PageMediaSizeName?.ToString() ?? SelectedPageSize?.WidthMm.ToString() ?? string.Empty,
+ IsPrinterLandscape ? "L" : "P",
+ SelectedInputBin?.ToString() ?? string.Empty,
+ SelectedMediaType?.ToString() ?? string.Empty,
+ Math.Round(SheetWidthMm,2).ToString(),
+ Math.Round(SheetHeightMm,2).ToString()
+ };
+ var key = string.Join("|", keyParts);
+
+ // If cached, apply immediately
+ if (_marginsCache.TryGet(key, out var cached))
+ {
+ MarginLeftMm = cached.left; MarginTopMm = cached.top; MarginRightMm = cached.right; MarginBottomMm = cached.bottom;
+ _pendingMarginsKey = null;
+ return;
+ }
+ // schedule deferred compute
+ _pendingMarginsKey = key;
+ if (!_marginsDebounceTimer.IsEnabled)
+ _marginsDebounceTimer.Start();
  }
 
  public event PropertyChangedEventHandler PropertyChanged;

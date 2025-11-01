@@ -1,9 +1,11 @@
-﻿using System;
+﻿using System.Diagnostics;
 using System.IO;
-using System.Threading.Tasks;
+using System.Text;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Threading;
 
 namespace Envelope_printing
 {
@@ -12,38 +14,142 @@ namespace Envelope_printing
     /// </summary>
     public partial class App : Application
     {
+        private Mutex _singleInstanceMutex;
+        private SplashWindow _splash;
+        private string _logFilePath;
+
         protected override async void OnStartup(StartupEventArgs e)
         {
+            // Setup global handlers first
+            RegisterGlobalExceptionHandlers();
+
+            // Single-instance guard
+            bool created;
+            _singleInstanceMutex = new Mutex(true, "EnvelopePrinter.SingleInstance", out created);
+            if (!created)
+            {
+                Shutdown();
+                return;
+            }
+
             base.OnStartup(e);
             TryRegisterAppLogoResource();
-            // Show splash immediately
-            var splash = new SplashWindow();
-            splash.Show();
 
-            // Do heavy initialization on background thread
-            await Task.Run(() => HeavyInitialize());
-
-            // Create and show main window on UI thread
-            var main = new MainWindow();
-            // Optionally set initial size before show
-            main.Width = 900;
-            main.Height = 600;
-            main.Show();
-            // Close splash
-            splash.Close();
-        }
-
-        private void HeavyInitialize()
-        {
-            // Place any long-running startup tasks here. Example: warm-up DB services.
             try
             {
-                // Force load of services to JIT them in background
+                // Show splash immediately
+                _splash = new SplashWindow();
+                _splash.Show();
+
+                // Do heavy initialization on background thread (with own guard)
+                await Task.Run(() => HeavyInitializeSafe());
+
+                // Create and show main window on UI thread
+                var main = new MainWindow
+                {
+                    Width = 900,
+                    Height = 600
+                };
+                main.Show();
+            }
+            catch (Exception ex)
+            {
+                ShowFatalError("Ошибка при запуске приложения", ex);
+                // do not rethrow to avoid crash without dialog
+            }
+            finally
+            {
+                try { _splash?.Close(); } catch { }
+            }
+        }
+
+        private void RegisterGlobalExceptionHandlers()
+        {
+            this.DispatcherUnhandledException += (s, ev) =>
+            {
+                ev.Handled = true;
+                ShowFatalError("Необработанное исключение UI-потока", ev.Exception);
+            };
+            AppDomain.CurrentDomain.UnhandledException += (s, ev) =>
+            {
+                var ex = ev.ExceptionObject as Exception;
+                ShowFatalError("Критическая ошибка", ex);
+            };
+            TaskScheduler.UnobservedTaskException += (s, ev) =>
+            {
+                ev.SetObserved();
+                LogException("Необработанное исключение фоновой задачи", ev.Exception);
+            };
+        }
+
+        private void ShowFatalError(string message, Exception ex)
+        {
+            try
+            {
+                LogException(message, ex);
+                // Ensure running on UI thread
+                if (this.Dispatcher.CheckAccess())
+                {
+                    var dlg = new ErrorDialog(message, ex, _logFilePath) { Owner = Current?.MainWindow };
+                    dlg.ShowDialog();
+                }
+                else
+                {
+                    this.Dispatcher.Invoke(() =>
+                    {
+                        var dlg = new ErrorDialog(message, ex, _logFilePath) { Owner = Current?.MainWindow };
+                        dlg.ShowDialog();
+                    });
+                }
+            }
+            catch { }
+        }
+
+        private void LogException(string message, Exception ex)
+        {
+            try
+            {
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                var folder = Path.Combine(appData, "EnvelopePrinter", "logs");
+                Directory.CreateDirectory(folder);
+                if (string.IsNullOrEmpty(_logFilePath))
+                {
+                    _logFilePath = Path.Combine(folder, $"app-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+                }
+                var sb = new StringBuilder();
+                sb.AppendLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}");
+                if (ex != null) sb.AppendLine(ex.ToString());
+                sb.AppendLine(new string('-', 80));
+                File.AppendAllText(_logFilePath, sb.ToString(), Encoding.UTF8);
+            }
+            catch { }
+        }
+
+        protected override void OnExit(ExitEventArgs e)
+        {
+            try
+            {
+                RunUpdateOnExitIfRequested();
+            }
+            catch { }
+            _singleInstanceMutex?.ReleaseMutex();
+            _singleInstanceMutex?.Dispose();
+            base.OnExit(e);
+        }
+
+        private void HeavyInitializeSafe()
+        {
+            try
+            {
+                // Place any long-running startup tasks here. Example: warm-up DB services.
                 var ds = new EnvelopePrinter.Core.DataService();
                 ds.GetAllTemplates();
                 ds.GetAllRecipients();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                LogException("Ошибка инициализации", ex);
+            }
         }
 
         private void TryRegisterAppLogoResource()
@@ -117,6 +223,112 @@ namespace Envelope_printing
                 return bi;
             }
             catch { return null; }
+        }
+
+        private static string GetUpdateOnExitMarkerPath()
+        {
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            return Path.Combine(appData, "EnvelopePrinter", "update-on-exit.json");
+        }
+
+        private static bool NeedsElevation()
+        {
+            try
+            {
+                var dir = AppContext.BaseDirectory;
+                var pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+                var pf86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+                return dir.StartsWith(pf, StringComparison.OrdinalIgnoreCase) || dir.StartsWith(pf86, StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
+        }
+
+        private static void RunUpdateOnExitIfRequested()
+        {
+            try
+            {
+                var markerPath = GetUpdateOnExitMarkerPath();
+                if (!File.Exists(markerPath)) return;
+                var json = File.ReadAllText(markerPath, Encoding.UTF8);
+                var marker = JsonSerializer.Deserialize<UpdateOnExitInfo>(json);
+                File.Delete(markerPath);
+                if (marker == null) return;
+
+                // MSI branch
+                if (marker.IsMsi && File.Exists(marker.DownloadedFile))
+                {
+                    var psiMsi = new ProcessStartInfo
+                    {
+                        FileName = "msiexec",
+                        Arguments = $"/i \"{marker.DownloadedFile}\"",
+                        UseShellExecute = true,
+                        Verb = NeedsElevation() ? "runas" : string.Empty
+                    };
+                    Process.Start(psiMsi);
+                    return;
+                }
+
+                // ZIP branch
+                var sourceDir = marker.SourceDir;
+                if (string.IsNullOrWhiteSpace(sourceDir) || !Directory.Exists(sourceDir)) return;
+                var targetDir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
+                var appExe = Process.GetCurrentProcess().MainModule?.FileName ?? Path.Combine(targetDir, "Envelope printing.exe");
+                WriteAndRunUpdaterScript(sourceDir, targetDir, appExe, marker.Restart);
+            }
+            catch { }
+        }
+
+        private static void WriteAndRunUpdaterScript(string sourceDir, string targetDir, string appExe, bool restart)
+        {
+            var temp = Path.Combine(Path.GetTempPath(), $"EnvelopeUpdater_{Guid.NewGuid():N}.cmd");
+            var pid = Environment.ProcessId;
+            var restartArg = restart ? "restart" : string.Empty;
+            // robocopy returns codes <8 as success
+            var script = $@"@echo off
+setlocal enableextensions
+set SRC=""{sourceDir}""
+set DST=""{targetDir}""
+set EXE=""{appExe}""
+set PID={pid}
+
+echo Waiting for process %PID% to exit...
+:wait
+for /f ""tokens=2 delims=,"" %%a in ('tasklist /FI ""PID eq %PID%"" /FO CSV /NH') do (
+ if ""%%~a""=="""" goto cont
+)
+timeout /t1 /nobreak >nul
+goto wait
+:cont
+
+robocopy %SRC% %DST% /E /R:2 /W:2 /NFL /NDL /NP /NJH /NJS
+set RC=%ERRORLEVEL%
+if %RC% GEQ8 (
+ echo Robocopy failed with code %RC%
+ exit /b %RC%
+)
+
+if ""{restartArg}""==""restart"" (
+ start """" %EXE%
+)
+exit /b0
+";
+            File.WriteAllText(temp, script, Encoding.ASCII);
+            var psi = new ProcessStartInfo
+            {
+                FileName = temp,
+                UseShellExecute = true,
+                Verb = NeedsElevation() ? "runas" : string.Empty,
+                WindowStyle = ProcessWindowStyle.Hidden
+            };
+            Process.Start(psi);
+        }
+
+        private sealed class UpdateOnExitInfo
+        {
+            public string SourceDir { get; set; }
+            public string DownloadedFile { get; set; }
+            public bool Restart { get; set; }
+            public bool IsMsi { get; set; }
         }
     }
 }

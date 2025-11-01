@@ -8,6 +8,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Collections.Generic;
 using System.Windows.Threading;
+using Envelope_printing.Utils;
 
 namespace Envelope_printing
 {
@@ -22,9 +23,9 @@ namespace Envelope_printing
         }
 
         private PrintPreviewViewModel _vm;
-        private readonly Dictionary<string, BitmapImage> _imageCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly DispatcherTimer _refreshTimer;
-        private readonly Canvas _contentLayer = new Canvas { RenderTransformOrigin = new Point(0.5,0.5) };
+        // Ensure content is clipped to envelope bounds
+        private readonly Canvas _contentLayer = new Canvas { RenderTransformOrigin = new Point(0.5,0.5), ClipToBounds = true };
 
         public PrintPreviewCanvas()
         {
@@ -55,7 +56,9 @@ namespace Envelope_printing
             Panel.SetZIndex(ImageableRect,0);
             Panel.SetZIndex(PreviewCanvas,1);
             Panel.SetZIndex(_contentLayer,1);
+            // Draw order: template border below imageable border; both under overlay
             Panel.SetZIndex(EnvelopeOutlineCanvas,2);
+            Panel.SetZIndex(ImageableBorderCanvas,3);
         }
 
         private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -117,7 +120,6 @@ namespace Envelope_printing
         private static double Px(double mm) => mm * Units.PxPerMm;
         private void ScheduleRefresh()
         {
-            // Render even when not loaded (needed for printing visuals created off-screen)
             _refreshTimer.Stop();
             if (!IsLoaded)
             {
@@ -138,6 +140,7 @@ namespace Envelope_printing
                 _contentLayer.Children.Clear();
                 PreviewCanvas.Children.Clear();
                 EnvelopeOutlineCanvas.Children.Clear();
+                ImageableBorderCanvas.Children.Clear();
                 ImageableRect.Visibility = Visibility.Collapsed;
                 return;
             }
@@ -163,11 +166,14 @@ namespace Envelope_printing
 
             var clipRect = new Rect(l, t, imgW, imgH);
             PreviewCanvas.Clip = new RectangleGeometry(clipRect);
+            EnvelopeOutlineCanvas.Clip = new RectangleGeometry(new Rect(0,0, sheetW, sheetH));
+            ImageableBorderCanvas.Clip = new RectangleGeometry(new Rect(0,0, sheetW, sheetH));
 
             if (vm.SelectedTemplate == null)
             {
                 _contentLayer.Children.Clear();
                 EnvelopeOutlineCanvas.Children.Clear();
+                ImageableBorderCanvas.Children.Clear();
                 ImageableRect.Visibility = vm.IsPrinting ? Visibility.Collapsed : Visibility.Visible;
                 return;
             }
@@ -202,6 +208,18 @@ namespace Envelope_printing
             Canvas.SetTop(_contentLayer, envTop);
             _contentLayer.RenderTransform = Transform.Identity;
 
+            // draw canvas background image (under items)
+            _contentLayer.Background = null;
+            if (!string.IsNullOrWhiteSpace(vm.SelectedTemplate?.BackgroundImagePath))
+            {
+                try
+                {
+                    var brush = new ImageBrush { ImageSource = ImageCache.Get(vm.SelectedTemplate.BackgroundImagePath), Stretch = (Stretch)Enum.Parse(typeof(Stretch), vm.SelectedTemplate.BackgroundStretch ?? "Uniform", true) };
+                    _contentLayer.Background = brush;
+                }
+                catch { _contentLayer.Background = null; }
+            }
+
             int visualIndex =0;
             foreach (var item in vm.PreviewItems.OrderBy(i => i.ZIndex))
             {
@@ -209,54 +227,140 @@ namespace Envelope_printing
                 double y = Px(item.PositionY) * scale;
                 double w = Px(item.Width) * scale;
                 double h = Px(item.Height) * scale;
-                if (item.IsImage)
+
+
+                // container to mirror designer (Grid with transform)
+                Grid host;
+                if (visualIndex < _contentLayer.Children.Count && _contentLayer.Children[visualIndex] is Grid g)
                 {
-                    Image img;
-                    if (visualIndex < _contentLayer.Children.Count && _contentLayer.Children[visualIndex] is Image existingImg) img = existingImg; else { img = new Image { RenderTransformOrigin = new Point(0.5,0.5) }; _contentLayer.Children.Insert(visualIndex, img); }
-                    img.Width = w; img.Height = h; img.Opacity = item.Opacity; img.Stretch = item.Stretch; img.RenderTransform = Transform.Identity;
-                    img.Source = GetCachedBitmap(item.ImagePath);
-                    Canvas.SetLeft(img, x); Canvas.SetTop(img, y);
-                    visualIndex++;
+                    host = g;
                 }
                 else
                 {
-                    Border border; TextBlock tb;
-                    if (visualIndex < _contentLayer.Children.Count && _contentLayer.Children[visualIndex] is Border existingBorder && existingBorder.Child is Grid grid && grid.Children.Count >0 && grid.Children[0] is TextBlock existingTb) { border = existingBorder; tb = existingTb; }
-                    else { border = new Border { RenderTransformOrigin = new Point(0.5,0.5) }; tb = new TextBlock(); var inner = new Grid(); inner.Children.Add(tb); border.Child = inner; _contentLayer.Children.Insert(visualIndex, border); }
-                    border.Width = w; border.Height = h; border.Background = item.Background; border.BorderBrush = item.BorderBrush; border.BorderThickness = new Thickness(item.BorderThickness * Units.PxPerMm * scale);
-                    border.CornerRadius = new CornerRadius(item.CornerRadius.TopLeft * Units.PxPerMm * scale); border.Opacity = item.Opacity; border.RenderTransform = Transform.Identity;
-                    tb.Text = item.StaticText ?? string.Empty; tb.FontFamily = new FontFamily(item.FontFamily); tb.FontSize = item.FontSize * scale; tb.FontWeight = item.IsBold ? FontWeights.Bold : FontWeights.Normal; tb.FontStyle = item.FontStyle; tb.Foreground = item.Foreground;
-                    tb.TextAlignment = item.TextAlignment; tb.Padding = new Thickness(item.Padding * Units.PxPerMm * scale); tb.TextWrapping = TextWrapping.Wrap; tb.HorizontalAlignment = item.HorizontalAlignment; tb.VerticalAlignment = item.VerticalAlignment;
-                    Canvas.SetLeft(border, x); Canvas.SetTop(border, y); visualIndex++;
+                    host = new Grid { RenderTransformOrigin = new Point(0.5,0.5) };
+                    _contentLayer.Children.Insert(visualIndex, host);
                 }
+                // Do not clear children here; reuse existing visuals when possible
+                host.Width = w; host.Height = h;
+                // Build transform: rotate then translate to position
+                var tg = new TransformGroup();
+                tg.Children.Add(new RotateTransform(item.RotationDegrees));
+                tg.Children.Add(new TranslateTransform(x, y));
+                host.RenderTransform = tg;
+                // Reset Canvas offsets
+                Canvas.SetLeft(host,0); Canvas.SetTop(host,0);
+
+                if (item.IsImage)
+                {
+                    Image img = null;
+                    if (host.Children.Count >0 && host.Children[0] is Image existingImg)
+                    {
+                        img = existingImg;
+                    }
+                    else
+                    {
+                        host.Children.Clear();
+                        img = new Image();
+                        host.Children.Add(img);
+                    }
+                    img.Stretch = item.Stretch;
+                    img.Source = ImageCache.Get(item.ImagePath);
+                    img.Opacity = item.Opacity;
+                }
+                else
+                {
+                    Border border = null;
+                    TextBlock tb = null;
+                    if (host.Children.Count >0 && host.Children[0] is Border existingBorder && existingBorder.Child is Grid inner && inner.Children.Count >0 && inner.Children[0] is TextBlock existingTb)
+                    {
+                        border = existingBorder;
+                        tb = existingTb;
+                    }
+                    else
+                    {
+                        host.Children.Clear();
+                        border = new Border();
+                        tb = new TextBlock();
+                        var innerGrid = new Grid();
+                        innerGrid.Children.Add(tb);
+                        border.Child = innerGrid;
+                        host.Children.Add(border);
+                    }
+
+                    border.Background = item.Background;
+                    border.BorderBrush = item.BorderBrush;
+                    border.BorderThickness = new Thickness(item.BorderThickness * Units.PxPerMm * scale);
+                    border.CornerRadius = new CornerRadius(item.CornerRadius.TopLeft * Units.PxPerMm * scale);
+                    border.Opacity = item.Opacity;
+                    border.Padding = new Thickness(item.Padding * Units.PxPerMm * scale);
+
+                    tb.Text = item.StaticText ?? string.Empty;
+                    tb.FontFamily = new FontFamily(item.FontFamily);
+                    tb.FontSize = item.FontSize * scale;
+                    tb.FontWeight = item.IsBold ? FontWeights.Bold : FontWeights.Normal;
+                    tb.FontStyle = item.FontStyle;
+                    tb.Foreground = item.Foreground;
+                    tb.TextAlignment = item.TextAlignment;
+                    tb.TextWrapping = TextWrapping.Wrap;
+                    tb.HorizontalAlignment = item.HorizontalAlignment;
+                    tb.VerticalAlignment = item.VerticalAlignment;
+                }
+
+                visualIndex++;
             }
             while (_contentLayer.Children.Count > visualIndex) _contentLayer.Children.RemoveAt(_contentLayer.Children.Count -1);
 
+            // Determine overflows
+            bool leftOverflow = envRect.Left < clipRect.Left -0.5;
+            bool rightOverflow = envRect.Right > clipRect.Right +0.5;
+            bool topOverflow = envRect.Top < clipRect.Top -0.5;
+            bool bottomOverflow = envRect.Bottom > clipRect.Bottom +0.5;
+
+            //1) Draw envelope outline in a noticeable neutral color; clip to page to avoid bleeding outside preview
             EnvelopeOutlineCanvas.Children.Clear();
+            EnvelopeOutlineCanvas.Clip = new RectangleGeometry(new Rect(0,0, sheetW, sheetH));
             if (!vm.IsPrinting)
             {
-                bool leftOverflow = envRect.Left < clipRect.Left -0.5;
-                bool rightOverflow = envRect.Right > clipRect.Right +0.5;
-                bool topOverflow = envRect.Top < clipRect.Top -0.5;
-                bool bottomOverflow = envRect.Bottom > clipRect.Bottom +0.5;
-                DrawTemplateBorder(envRect, leftOverflow, topOverflow, rightOverflow, bottomOverflow);
+                DrawTemplateBorder(envRect);
+            }
+
+            //2) Draw imageable area borders, coloring the sides that overflow
+            ImageableBorderCanvas.Children.Clear();
+            ImageableBorderCanvas.Clip = new RectangleGeometry(new Rect(0,0, sheetW, sheetH));
+            if (!vm.IsPrinting)
+            {
+                DrawImageableBorder(clipRect, leftOverflow, topOverflow, rightOverflow, bottomOverflow);
             }
 
             ImageableRect.Visibility = vm.IsPrinting ? Visibility.Collapsed : Visibility.Visible;
         }
 
-        private void DrawTemplateBorder(Rect envRect, bool leftOv, bool topOv, bool rightOv, bool bottomOv)
+        private void DrawTemplateBorder(Rect envRect)
         {
-            var ok = Color.FromRgb(255,152,0); // orange normal
-            var bad = Color.FromRgb(220,20,60); // red overflow
-            double th =3;
-            AddLine(new Point(envRect.Left, envRect.Top), new Point(envRect.Left, envRect.Bottom), leftOv ? bad : ok, th);
-            AddLine(new Point(envRect.Left, envRect.Top), new Point(envRect.Right, envRect.Top), topOv ? bad : ok, th);
-            AddLine(new Point(envRect.Right, envRect.Top), new Point(envRect.Right, envRect.Bottom), rightOv ? bad : ok, th);
-            AddLine(new Point(envRect.Left, envRect.Bottom), new Point(envRect.Right, envRect.Bottom), bottomOv ? bad : ok, th);
+            var color = Color.FromRgb(33,150,243); // blue (not alarming)
+            double th =2.5;
+            // inset the outline so it does not coincide with the imageable border when fitted
+            double inset = th *0.6 +1.0; // half thickness plus1px safety
+            Rect r = new Rect(envRect.Left + inset, envRect.Top + inset, envRect.Width -2*inset, envRect.Height -2*inset);
+            if (r.Width <=0 || r.Height <=0) return;
+            AddLine(EnvelopeOutlineCanvas, new Point(r.Left, r.Top), new Point(r.Left, r.Bottom), color, th);
+            AddLine(EnvelopeOutlineCanvas, new Point(r.Left, r.Top), new Point(r.Right, r.Top), color, th);
+            AddLine(EnvelopeOutlineCanvas, new Point(r.Right, r.Top), new Point(r.Right, r.Bottom), color, th);
+            AddLine(EnvelopeOutlineCanvas, new Point(r.Left, r.Bottom), new Point(r.Right, r.Bottom), color, th);
         }
 
-        private void AddLine(Point A, Point B, Color color, double thickness)
+        private void DrawImageableBorder(Rect clipRect, bool leftOv, bool topOv, bool rightOv, bool bottomOv)
+        {
+            var normal = Color.FromRgb(204,204,204); // light gray
+            var alert = Color.FromRgb(220,20,60); // crimson when overflow
+            double th =3;
+            AddLine(ImageableBorderCanvas, new Point(clipRect.Left, clipRect.Top), new Point(clipRect.Left, clipRect.Bottom), leftOv ? alert : normal, th);
+            AddLine(ImageableBorderCanvas, new Point(clipRect.Left, clipRect.Top), new Point(clipRect.Right, clipRect.Top), topOv ? alert : normal, th);
+            AddLine(ImageableBorderCanvas, new Point(clipRect.Right, clipRect.Top), new Point(clipRect.Right, clipRect.Bottom), rightOv ? alert : normal, th);
+            AddLine(ImageableBorderCanvas, new Point(clipRect.Left, clipRect.Bottom), new Point(clipRect.Right, clipRect.Bottom), bottomOv ? alert : normal, th);
+        }
+
+        private void AddLine(Canvas targetCanvas, Point A, Point B, Color color, double thickness)
         {
             var line = new System.Windows.Shapes.Line
             {
@@ -264,18 +368,9 @@ namespace Envelope_printing
                 X2 = B.X, Y2 = B.Y,
                 Stroke = new SolidColorBrush(color), StrokeThickness = thickness
             };
-            EnvelopeOutlineCanvas.Children.Add(line);
+            targetCanvas.Children.Add(line);
         }
 
-        private ImageSource GetCachedBitmap(string path)
-        {
-            if (string.IsNullOrWhiteSpace(path)) return null;
-            if (_imageCache.TryGetValue(path, out var cached)) return cached;
-            try
-            {
-                var bmp = new BitmapImage(); bmp.BeginInit(); bmp.UriSource = new Uri(path, UriKind.Absolute); bmp.CacheOption = BitmapCacheOption.OnLoad; bmp.CreateOptions = BitmapCreateOptions.IgnoreImageCache; bmp.EndInit(); bmp.Freeze(); _imageCache[path] = bmp; return bmp;
-            }
-            catch { return null; }
-        }
+        
     }
 }

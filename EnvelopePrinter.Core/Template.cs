@@ -16,5 +16,9 @@ namespace EnvelopePrinter.Core
 
         // Коллекция всех элементов, которые принадлежат этому шаблону
         public virtual List<TemplateItem> Items { get; set; } = new List<TemplateItem>();
+        
+        // Фон холста: путь и режим растяжения (сохраняем в БД)
+        public string BackgroundImagePath { get; set; } = string.Empty;
+        public string BackgroundStretch { get; set; } = "Uniform"; // None/Uniform/Fill/UniformToFill
     }
 }

@@ -10,7 +10,19 @@
  <ScrollViewer VerticalScrollBarVisibility="Auto">
  <StackPanel Margin="16">
  <TextBlock Text="Настройки" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,12"/>
- <local:UpdatePanel />
+
+ <!-- Theme selector -->
+ <Border Style="{StaticResource PanelBorder}" Padding="12" Margin="0,0,0,12">
+ <StackPanel>
+ <TextBlock Text="Тема оформления" Style="{StaticResource SectionHeader}"/>
+ <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+ <RadioButton Content="Светлая" GroupName="Theme" Margin="0,0,12,0" IsChecked="{Binding IsLightTheme, Mode=TwoWay}"/>
+ <RadioButton Content="Тёмная" GroupName="Theme" IsChecked="{Binding IsDarkTheme, Mode=TwoWay}"/>
+ </StackPanel>
+ </StackPanel>
+ </Border>
+
+ <local:UpdatePanel x:Name="Updates" />
  </StackPanel>
  </ScrollViewer>
 </UserControl>

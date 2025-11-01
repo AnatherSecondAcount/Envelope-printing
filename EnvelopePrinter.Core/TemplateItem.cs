@@ -84,14 +84,12 @@ namespace EnvelopePrinter.Core
         public double Opacity { get => _opacity; set { _opacity = value; OnPropertyChanged(); } }
 
         // Rotation (not persisted yet to avoid DB migration)
-        [NotMapped]
         private double _rotationDegrees = 0;
-        [NotMapped]
         public double RotationDegrees { get => _rotationDegrees; set { _rotationDegrees = value; OnPropertyChanged(); } }
 
         // ZIndex for layering
-        private int _zIndex = 1;
-        public int ZIndex { get => _zIndex; set { _zIndex = Math.Max(0, Math.Min(10, value)); OnPropertyChanged(); } }
+        private int _zIndex = 0;
+        public int ZIndex { get => _zIndex; set { _zIndex = value < 0 ? 0 : value; OnPropertyChanged(); } }
 
         // Внешний ключ
         public int TemplateId { get; set; }

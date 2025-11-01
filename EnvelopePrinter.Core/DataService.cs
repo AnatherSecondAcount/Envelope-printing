@@ -12,6 +12,7 @@ namespace EnvelopePrinter.Core
     public class DataService
     {
         private readonly string _databasePath;
+        private static bool _migrationsCheckedAndApplied = false;
 
         public DataService()
         {
@@ -24,12 +25,15 @@ namespace EnvelopePrinter.Core
             TryApplyMigrations();
             TryEnsureTemplateItemColumns();
             TryEnsureRecipientColumns();
+            TryEnsureTemplateColumns();
         }
 
         private void TryApplyMigrations()
         {
             try
             {
+                if (_migrationsCheckedAndApplied) return;
+
                 var dir = Path.GetDirectoryName(_databasePath);
                 if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
@@ -37,7 +41,48 @@ namespace EnvelopePrinter.Core
                 optionsBuilder.UseSqlite($"Data Source={_databasePath}");
 
                 using var context = new ApplicationDbContext();
-                context.Database.Migrate();
+                var pending = context.Database.GetPendingMigrations();
+                if (pending != null && pending.Any())
+                {
+                    // Run migrations on background thread to avoid UI blocking when DataService used on UI startup
+                    System.Threading.Tasks.Task.Run(() =>
+                    {
+                        try
+                        {
+                            using var ctx = new ApplicationDbContext();
+                            ctx.Database.Migrate();
+                        }
+                        catch { }
+                    });
+                }
+
+                _migrationsCheckedAndApplied = true;
+            }
+            catch { }
+        }
+
+        private void TryEnsureTemplateColumns()
+        {
+            try
+            {
+                if (!File.Exists(_databasePath)) return;
+                using var connection = new SqliteConnection($"Data Source={_databasePath}");
+                connection.Open();
+                using var check = connection.CreateCommand();
+                check.CommandText = "PRAGMA table_info('Templates');";
+                using var rd = check.ExecuteReader();
+                var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                while (rd.Read()) { if (!rd.IsDBNull(1)) existing.Add(rd.GetString(1)); }
+                var sqlList = new List<string>();
+                if (!existing.Contains("BackgroundImagePath")) sqlList.Add("ALTER TABLE Templates ADD COLUMN BackgroundImagePath TEXT;");
+                if (!existing.Contains("BackgroundStretch")) sqlList.Add("ALTER TABLE Templates ADD COLUMN BackgroundStretch TEXT DEFAULT 'Uniform';");
+                foreach (var sql in sqlList)
+                {
+                    using var alter = connection.CreateCommand(); alter.CommandText = sql; try { alter.ExecuteNonQuery(); } catch { }
+                }
+                // Санитизация NULL значений
+                using (var upd1 = connection.CreateCommand()) { upd1.CommandText = "UPDATE Templates SET BackgroundImagePath = '' WHERE BackgroundImagePath IS NULL;"; try { upd1.ExecuteNonQuery(); } catch { } }
+                using (var upd2 = connection.CreateCommand()) { upd2.CommandText = "UPDATE Templates SET BackgroundStretch = 'Uniform' WHERE BackgroundStretch IS NULL;"; try { upd2.ExecuteNonQuery(); } catch { } }
             }
             catch { }
         }
@@ -64,12 +109,24 @@ namespace EnvelopePrinter.Core
                 var toAdd = new List<string>();
                 if (!existing.Contains("Name")) toAdd.Add("ALTER TABLE TemplateItems ADD COLUMN Name TEXT;");
                 if (!existing.Contains("ImagePath")) toAdd.Add("ALTER TABLE TemplateItems ADD COLUMN ImagePath TEXT;");
-                if (!existing.Contains("IsImage")) toAdd.Add("ALTER TABLE TemplateItems ADD COLUMN IsImage INTEGER NOT NULL DEFAULT0;");
+                // FIXED: add missing space after DEFAULT so SQL is valid
+                if (!existing.Contains("IsImage")) toAdd.Add("ALTER TABLE TemplateItems ADD COLUMN IsImage INTEGER NOT NULL DEFAULT 0;");
+                if (!existing.Contains("RotationDegrees")) toAdd.Add("ALTER TABLE TemplateItems ADD COLUMN RotationDegrees REAL NOT NULL DEFAULT 0;");
                 foreach (var sql in toAdd)
                 {
                     using var alterCmd = connection.CreateCommand();
                     alterCmd.CommandText = sql; try { alterCmd.ExecuteNonQuery(); } catch { }
                 }
+                // Санитизация NULL -> значения по умолчанию для обязательных текстовых полей
+                string[] textCols = new[] { "Background","BorderBrush","ContentBindingPath","FontFamily","FontWeight","Foreground","HorizontalAlignment","ImagePath","Name","StaticText","Stretch","TextAlignment","VerticalAlignment" };
+                foreach (var col in textCols)
+                {
+                    using var upd = connection.CreateCommand();
+                    upd.CommandText = $"UPDATE TemplateItems SET {col} = '' WHERE {col} IS NULL;";
+                    try { upd.ExecuteNonQuery(); } catch { }
+                }
+                using (var updIsImage = connection.CreateCommand())
+                { updIsImage.CommandText = "UPDATE TemplateItems SET IsImage =0 WHERE IsImage IS NULL;"; try { updIsImage.ExecuteNonQuery(); } catch { } }
             }
             catch { }
         }
@@ -159,7 +216,49 @@ namespace EnvelopePrinter.Core
         {
             using (var context = new ApplicationDbContext())
             {
-                context.Templates.Update(template);
+                var existing = context.Templates.Include(t => t.Items).FirstOrDefault(t => t.Id == template.Id);
+                if (existing == null)
+                {
+                    context.Templates.Add(template);
+                    context.SaveChanges();
+                    return;
+                }
+
+                // update template scalar properties
+                existing.Name = template.Name;
+                existing.EnvelopeWidth = template.EnvelopeWidth;
+                existing.EnvelopeHeight = template.EnvelopeHeight;
+                existing.BackgroundImagePath = template.BackgroundImagePath;
+                existing.BackgroundStretch = template.BackgroundStretch;
+
+                // sync items: delete missing
+                var incomingIds = new HashSet<int>(template.Items.Select(i => i.Id));
+                foreach (var dbItem in existing.Items.ToList())
+                {
+                    if (!incomingIds.Contains(dbItem.Id))
+                    {
+                        context.TemplateItems.Remove(dbItem);
+                    }
+                }
+
+                // add/update items
+                foreach (var src in template.Items)
+                {
+                    TemplateItem target = null;
+                    if (src.Id !=0)
+                    {
+                        target = existing.Items.FirstOrDefault(i => i.Id == src.Id);
+                    }
+                    if (target == null)
+                    {
+                        target = new TemplateItem();
+                        existing.Items.Add(target);
+                    }
+                    // copy all scalar properties
+                    context.Entry(target).CurrentValues.SetValues(src);
+                    target.TemplateId = existing.Id;
+                }
+
                 context.SaveChanges();
             }
         }

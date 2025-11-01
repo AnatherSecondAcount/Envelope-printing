@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl x:Class="Envelope_printing.PrintPreviewView"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:local="clr-namespace:Envelope_printing"
+ xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+ xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+ mc:Ignorable="d"
+ d:DesignHeight="600" d:DesignWidth="1100"
+ Background="{DynamicResource AppBackground}"
+ UseLayoutRounding="True" SnapsToDevicePixels="True">
+
+ <UserControl.Resources>
+ <local:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+ <local:ZeroToVisibleConverter x:Key="ZeroToVisible"/>
+ <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+ </UserControl.Resources>
+
+ <Grid>
+ <Grid.RowDefinitions>
+ <RowDefinition Height="*"/>
+ </Grid.RowDefinitions>
+ <Grid.ColumnDefinitions>
+ <ColumnDefinition Width="320"/>
+ <ColumnDefinition Width="*"/>
+ </Grid.ColumnDefinitions>
+
+ <!-- Left: settings -->
+ <ScrollViewer Grid.Row="0" Grid.Column="0" VerticalScrollBarVisibility="Auto" Padding="12,12,10,12">
+ <StackPanel>
+ <TextBlock Text="Печать конвертов" Style="{StaticResource HeaderTextBlock}"/>
+ <Border Style="{StaticResource InfoBanner}" Visibility="{Binding Templates.Count, Converter={StaticResource ZeroToVisible}}">
+ <TextBlock Text="Не найдено ни одного шаблона. Перейдите в Дизайнер и создайте шаблон." TextWrapping="Wrap"/>
+ </Border>
+
+ <TextBlock Text="Шаблон" Style="{StaticResource SectionHeader}"/>
+ <ComboBox Margin="6,2,6,8" ItemsSource="{Binding Templates}" SelectedItem="{Binding SelectedTemplate}" DisplayMemberPath="Name"/>
+
+ <TextBlock Text="Принтер" Style="{StaticResource SectionHeader}"/>
+ <Grid Margin="6,2,6,8">
+ <Grid.ColumnDefinitions>
+ <ColumnDefinition Width="*"/>
+ <ColumnDefinition Width="Auto"/>
+ </Grid.ColumnDefinitions>
+ <ComboBox Grid.Column="0" ItemsSource="{Binding Printers}" SelectedItem="{Binding SelectedPrinter}" DisplayMemberPath="Name"
+ Height="32" Style="{StaticResource FormField}" HorizontalContentAlignment="Left" VerticalContentAlignment="Center" Padding="8,0,8,0"/>
+ <Button Grid.Column="1" Style="{StaticResource FileButtonStyle}" Width="36" Height="32" Margin="8,0,0,0" ToolTip="Параметры печати…" Click="OpenPrinterSettings_Click">
+ <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE713;" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+ </Button>
+ </Grid>
+
+ <Grid Style="{StaticResource LabeledRowGrid}" Margin="0,2,0,0">
+ <Grid.ColumnDefinitions>
+ <ColumnDefinition Width="Auto"/>
+ <ColumnDefinition Width="*"/>
+ </Grid.ColumnDefinitions>
+ <TextBlock Text="Формат" Style="{StaticResource FormLabelText}"/>
+ <ComboBox Grid.Column="1" ItemsSource="{Binding AvailablePageSizes}" SelectedItem="{Binding SelectedPageSize}" DisplayMemberPath="Display" Style="{StaticResource FormField}"
+ Height="32" HorizontalContentAlignment="Left" VerticalContentAlignment="Center" Padding="8,0,8,0"/>
+ </Grid>
+
+ <!-- Input bin (tray) -->
+ <Grid Margin="0,2,0,0">
+ <Grid.Style>
+ <Style TargetType="Grid" BasedOn="{StaticResource LabeledRowGrid}">
+ <Setter Property="Visibility" Value="Collapsed"/>
+ <Style.Triggers>
+ <DataTrigger Binding="{Binding ShowInputBin}" Value="True">
+ <Setter Property="Visibility" Value="Visible"/>
+ </DataTrigger>
+ </Style.Triggers>
+ </Style>
+ </Grid.Style>
+ <Grid.ColumnDefinitions>
+ <ColumnDefinition Width="Auto"/>
+ <ColumnDefinition Width="*"/>
+ </Grid.ColumnDefinitions>
+ <TextBlock Text="Лоток" Style="{StaticResource FormLabelText}"/>
+ <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableInputBins}" SelectedItem="{Binding SelectedInputBin}" Style="{StaticResource FormField}"
+ Height="32" HorizontalContentAlignment="Left" VerticalContentAlignment="Center" Padding="8,0,8,0"/>
+ </Grid>
+
+ <!-- Media type -->
+ <Grid Margin="0,2,0,0">
+ <Grid.Style>
+ <Style TargetType="Grid" BasedOn="{StaticResource LabeledRowGrid}">
+ <Setter Property="Visibility" Value="Collapsed"/>
+ <Style.Triggers>
+ <DataTrigger Binding="{Binding ShowMediaType}" Value="True">
+ <Setter Property="Visibility" Value="Visible"/>
+ </DataTrigger>
+ </Style.Triggers>
+ </Style>
+ </Grid.Style>
+ <Grid.ColumnDefinitions>
+ <ColumnDefinition Width="Auto"/>
+ <ColumnDefinition Width="*"/>
+ </Grid.ColumnDefinitions>
+ <TextBlock Text="Тип бумаги" Style="{StaticResource FormLabelText}"/>
+ <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableMediaTypes}" SelectedItem="{Binding SelectedMediaType}" Style="{StaticResource FormField}"
+ Height="32" HorizontalContentAlignment="Left" VerticalContentAlignment="Center" Padding="8,0,8,0"/>
+ </Grid>
+
+ <Grid Style="{StaticResource LabeledRowGrid}" Margin="0,2,0,0">
+ <Grid.ColumnDefinitions>
+ <ColumnDefinition Width="Auto"/>
+ <ColumnDefinition Width="*"/>
+ </Grid.ColumnDefinitions>
+ <TextBlock Text="Ориентация (лист)" Style="{StaticResource FormLabelText}"/>
+ <WrapPanel Grid.Column="1" ItemWidth="100" Margin="8,2,0,2">
+ <RadioButton Content="Книжная" IsChecked="{Binding IsPrinterLandscape, Converter={StaticResource InverseBooleanConverter}}"/>
+ <RadioButton Content="Альбомная" IsChecked="{Binding IsPrinterLandscape}"/>
+ </WrapPanel>
+ </Grid>
+ <Grid Style="{StaticResource LabeledRowGrid}" Margin="0,2,0,0">
+ <Grid.ColumnDefinitions>
+ <ColumnDefinition Width="Auto"/>
+ <ColumnDefinition Width="*"/>
+ </Grid.ColumnDefinitions>
+ <TextBlock Text="Копий" Style="{StaticResource FormLabelText}"/>
+ <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,2,0,2">
+ <Button Content="-" Style="{StaticResource SmallSquareButtonStyle}" Command="{Binding DecreaseCopiesCommand}"/>
+ <TextBox Style="{StaticResource SmallNumericTextBoxStyle}" Margin="6,0,2,0" HorizontalContentAlignment="Center" Text="{Binding Copies, UpdateSourceTrigger=PropertyChanged}"/>
+ <Button Content="+" Style="{StaticResource SmallSquareButtonStyle}" Command="{Binding IncreaseCopiesCommand}"/>
+ </StackPanel>
+ </Grid>
+ <TextBlock Text="Диапазон печати" Style="{StaticResource SectionHeader}"/>
+ <StackPanel Margin="6,2,6,8">
+ <RadioButton Content="Все" IsChecked="{Binding IsRangeAll}"/>
+ <RadioButton Content="Текущая" IsChecked="{Binding IsRangeCurrent}"/>
+ <Grid>
+ <Grid.ColumnDefinitions>
+ <ColumnDefinition Width="Auto"/>
+ <ColumnDefinition Width="*"/>
+ </Grid.ColumnDefinitions>
+ <RadioButton Content="Произвольный" IsChecked="{Binding IsRangeCustom}" Margin="0,5,0,5" Height="20" VerticalAlignment="Center"/>
+ <TextBox Grid.Column="1" IsEnabled="{Binding IsRangeCustomEnabled}" Text="{Binding RangeExpression, UpdateSourceTrigger=PropertyChanged}" ToolTip="Например:1-3,5,8-10" Margin="8,0,0,0"/>
+ </Grid>
+ </StackPanel>
+ <TextBlock Text="Расположение конверта" Style="{StaticResource SectionHeader}"/>
+ <CheckBox Margin="8,6,6,6" Content="Вписать в печатную область" IsChecked="{Binding FitToImageableArea}"/>
+ <Grid Style="{StaticResource LabeledRowGrid}" Margin="0,2,0,0">
+ <Grid.ColumnDefinitions>
+ <ColumnDefinition Width="Auto"/>
+ <ColumnDefinition Width="*"/>
+ </Grid.ColumnDefinitions>
+ <TextBlock Text="Масштаб (%)" Style="{StaticResource FormLabelText}"/>
+ <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,2,0,2">
+ <TextBox Width="60" Text="{Binding TemplateScalePercent}" IsEnabled="{Binding FitToImageableArea, Converter={StaticResource InverseBooleanConverter}}"/>
+ </StackPanel>
+ </Grid>
+ <Grid Style="{StaticResource LabeledRowGrid}" Margin="0,2,0,0">
+ <Grid.ColumnDefinitions>
+ <ColumnDefinition Width="Auto"/>
+ <ColumnDefinition Width="*"/>
+ </Grid.ColumnDefinitions>
+ <TextBlock Text="Смещение X (мм)" Style="{StaticResource FormLabelText}"/>
+ <TextBox Grid.Column="1" Text="{Binding TemplateOffsetXMm, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,0"/>
+ </Grid>
+ <Grid Style="{StaticResource LabeledRowGrid}" Margin="0,2,0,8">
+ <Grid.ColumnDefinitions>
+ <ColumnDefinition Width="Auto"/>
+ <ColumnDefinition Width="*"/>
+ </Grid.ColumnDefinitions>
+ <TextBlock Text="Смещение Y (мм)" Style="{StaticResource FormLabelText}"/>
+ <TextBox Grid.Column="1" Text="{Binding TemplateOffsetYMm, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,0"/>
+ </Grid>
+ <TextBlock Text="Размеры шаблона" Style="{StaticResource SectionHeader}"/>
+ <Grid Style="{StaticResource LabeledRowGrid}" Margin="0,2,0,0">
+ <Grid.ColumnDefinitions>
+ <ColumnDefinition Width="Auto"/>
+ <ColumnDefinition Width="*"/>
+ </Grid.ColumnDefinitions>
+ <TextBlock Text="Ширина (мм)" Style="{StaticResource FormLabelText}"/>
+ <TextBlock Grid.Column="1" Text="{Binding EnvelopeWidthMm}" Margin="8,0,0,0"/>
+ </Grid>
+ <Grid Style="{StaticResource LabeledRowGrid}" Margin="0,2,0,12">
+ <Grid.ColumnDefinitions>
+ <ColumnDefinition Width="Auto"/>
+ <ColumnDefinition Width="*"/>
+ </Grid.ColumnDefinitions>
+ <TextBlock Text="Высота (мм)" Style="{StaticResource FormLabelText}"/>
+ <TextBlock Grid.Column="1" Text="{Binding EnvelopeHeightMm}" Margin="8,0,0,0"/>
+ </Grid>
+
+ <Button x:Name="PrintButton" Content="Печать" Style="{StaticResource ActionButtonStyle}" Height="40" Margin="0,10,0,0" Click="Print_Click" HorizontalAlignment="Stretch"/>
+
+ <!-- Встроенную панель прогресса убрали: теперь модальное окно -->
+ </StackPanel>
+ </ScrollViewer>
+
+ <!-- Right: preview and filters -->
+ <Grid Grid.Row="0" Grid.Column="1">
+ <Grid.RowDefinitions>
+ <RowDefinition Height="*"/>
+ <RowDefinition Height="Auto"/>
+ </Grid.RowDefinitions>
+ <Border Grid.Row="0" Margin="10" Padding="12" Style="{StaticResource PanelBorder.Secondary}" BorderBrush="{DynamicResource PreviewBorderBrush}" BorderThickness="1" Background="{DynamicResource PreviewBackdropBrush}">
+ <Grid>
+ <Viewbox Stretch="Uniform" StretchDirection="Both">
+ <local:PrintPreviewCanvas DataContext="{Binding}" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+ </Viewbox>
+ <Border VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,10" Padding="6" Style="{StaticResource OverlayPanelBorder}"
+ Visibility="{Binding IsRangeCurrent, Converter={StaticResource InverseBooleanConverter}}">
+ <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+ <Button Content="←" Command="{Binding PrevPageCommand}" MinWidth="44"/>
+ <TextBlock Text="{Binding CurrentPageDisplay}" Margin="8,0" VerticalAlignment="Center"/>
+ <Button Content="→" Command="{Binding NextPageCommand}" MinWidth="44"/>
+ </StackPanel>
+ </Border>
+ </Grid>
+ </Border>
+ <Border Grid.Row="1" Padding="10" HorizontalAlignment="Left" Margin="10,0,0,10" Width="460" Style="{StaticResource PanelBorder.Secondary}">
+ <StackPanel>
+ <TextBlock Text="Фильтр печати" Style="{StaticResource HeaderTextBlock}"/>
+ <Border Style="{StaticResource InfoBanner}" Visibility="{Binding AvailableCities.Count, Converter={StaticResource ZeroToVisible}}">
+ <TextBlock Text="Поля для фильтрации не найдены. Заполните базу получателей." TextWrapping="Wrap"/>
+ </Border>
+ <Grid Margin="0,6,0,0">
+ <Grid.RowDefinitions>
+ <RowDefinition/>
+ </Grid.RowDefinitions>
+ <Grid.ColumnDefinitions>
+ <ColumnDefinition Width="140"/>
+ <ColumnDefinition Width="*"/>
+ </Grid.ColumnDefinitions>
+ <TextBlock Grid.Row="0" Grid.Column="0" Text="Город" VerticalAlignment="Center"/>
+ <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding AvailableCities}" SelectedItem="{Binding SelectedCity}"/>
+ </Grid>
+ <TextBlock Text="Поиск" Style="{StaticResource SectionHeader}"/>
+ <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"/>
+ </StackPanel>
+ </Border>
+ </Grid>
+ </Grid>
+</UserControl>

@@ -1,4 +1,3 @@
-using EnvelopePrinter.Core;
 using Microsoft.Win32;
 using System;
 using System.Collections.ObjectModel;
@@ -8,9 +7,13 @@ using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Timers;
+using System.Collections.Specialized;
 
 namespace Envelope_printing
 {
+ using EnvelopePrinter.Core;
+
  public class OptionItem
  {
  public string Display { get; }
@@ -19,7 +22,7 @@ namespace Envelope_printing
  public override string ToString() => Display;
  }
 
- public class TemplateDesignerViewModel : INotifyPropertyChanged
+ public class TemplateDesignerViewModel : INotifyPropertyChanged, IDisposable
  {
  public event PropertyChangedEventHandler PropertyChanged;
  protected void OnPropertyChanged([CallerMemberName] string propertyName = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
@@ -53,21 +56,22 @@ namespace Envelope_printing
 
  public ObservableCollection<Template> Templates { get; private set; }
  private Template _selectedTemplate;
- public Template SelectedTemplate { get => _selectedTemplate; set { _selectedTemplate = value; OnPropertyChanged(); UpdateSelectedTemplateProperties(); } }
+ public Template SelectedTemplate { get => _selectedTemplate; set { PersistPendingChanges(); _selectedTemplate = value; OnPropertyChanged(); UpdateSelectedTemplateProperties(); } }
 
  private string _selectedTemplateName;
  public string SelectedTemplateName { get => _selectedTemplateName; set { if (_selectedTemplateName == value) return; _selectedTemplateName = value; if (SelectedTemplate != null) SelectedTemplate.Name = value; CollectionViewSource.GetDefaultView(Templates)?.Refresh(); OnPropertyChanged(); } }
  private double _selectedTemplateWidth;
- public double SelectedTemplateWidth { get => _selectedTemplateWidth; set { if (_selectedTemplateWidth == value) return; _selectedTemplateWidth = value; if (SelectedTemplate != null) SelectedTemplate.EnvelopeWidth = value; OnPropertyChanged(); OnPropertyChanged(nameof(DisplayWidth)); ValidateAllItemsBounds(); } }
+ public double SelectedTemplateWidth { get => _selectedTemplateWidth; set { if (_selectedTemplateWidth == value) return; _selectedTemplateWidth = value; if (SelectedTemplate != null) SelectedTemplate.EnvelopeWidth = value; OnPropertyChanged(); OnPropertyChanged(nameof(DisplayWidth)); MarkAllDirty(); RequestValidateAllItemsBounds(); } }
  private double _selectedTemplateHeight;
- public double SelectedTemplateHeight { get => _selectedTemplateHeight; set { if (_selectedTemplateHeight == value) return; _selectedTemplateHeight = value; if (SelectedTemplate != null) SelectedTemplate.EnvelopeHeight = value; OnPropertyChanged(); OnPropertyChanged(nameof(DisplayHeight)); ValidateAllItemsBounds(); } }
+ public double SelectedTemplateHeight { get => _selectedTemplateHeight; set { if (_selectedTemplateHeight == value) return; _selectedTemplateHeight = value; if (SelectedTemplate != null) SelectedTemplate.EnvelopeHeight = value; OnPropertyChanged(); OnPropertyChanged(nameof(DisplayHeight)); MarkAllDirty(); RequestValidateAllItemsBounds(); } }
  public double DisplayWidth => SelectedTemplateWidth * PxPerMm;
  public double DisplayHeight => SelectedTemplateHeight * PxPerMm;
 
  private ObservableCollection<TemplateItemViewModel> _selectedTemplateItems;
  public ObservableCollection<TemplateItemViewModel> SelectedTemplateItems { get => _selectedTemplateItems; private set { _selectedTemplateItems = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanvasItems)); } }
+ public ObservableCollection<TemplateItemViewModel> CanvasItems => SelectedTemplateItems;
  private TemplateItemViewModel _selectedTemplateItem;
- public TemplateItemViewModel SelectedTemplateItem { get => _selectedTemplateItem; set { _selectedTemplateItem = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsItemSelected)); UpdateSelectedItemProperties(); UpdatePropertiesPanelVisibility(); } }
+ public TemplateItemViewModel SelectedTemplateItem { get => _selectedTemplateItem; set { _selectedTemplateItem = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsItemSelected)); UpdateSelectedItemProperties(); /* do not auto toggle panels here to keep canvas properties visible when selecting from list */ } }
 
  public ObservableCollection<string> AvailableRecipientColumns { get; private set; }
  private string _selectedItemContentBinding;
@@ -83,11 +87,24 @@ namespace Envelope_printing
  };
  public ObservableCollection<OptionItem> StretchModes { get; } = new ObservableCollection<OptionItem>
  {
- new OptionItem("Без масштабирования","None"), new OptionItem("По размеру","Uniform"), new OptionItem("Растянуть","Fill"), new OptionItem("Обрезать","UniformToFill")
+ new OptionItem("Без растяжения","None"), new OptionItem("По размеру","Uniform"), new OptionItem("Заполнить","Fill"), new OptionItem("Обрезать","UniformToFill")
  };
+
+ // Настройки фона холста (проксируем к текущему шаблону)
+ public string CanvasBackgroundImagePath
+ {
+ get => SelectedTemplate?.BackgroundImagePath ?? string.Empty;
+ set { if (SelectedTemplate == null) return; if (SelectedTemplate.BackgroundImagePath == value) return; SelectedTemplate.BackgroundImagePath = value; OnPropertyChanged(); }
+ }
+ public string CanvasBackgroundStretch
+ {
+ get => SelectedTemplate?.BackgroundStretch ?? "Uniform";
+ set { if (SelectedTemplate == null) return; if (SelectedTemplate.BackgroundStretch == value) return; SelectedTemplate.BackgroundStretch = value; OnPropertyChanged(); }
+ }
+
  public ObservableCollection<OptionItem> ColorChoices { get; } = new ObservableCollection<OptionItem>
  {
- new OptionItem("Прозрачно","Transparent"),
+ new OptionItem("Прозрачный","Transparent"),
  new OptionItem("Черный","Black"),
  new OptionItem("Белый","White"),
  new OptionItem("Серый","Gray"),
@@ -130,6 +147,21 @@ namespace Envelope_printing
  public ICommand UnbindSelectedItemCommand { get; }
  public ICommand ToggleLeftPanelCommand { get; }
  public ICommand ChangeImageCommand { get; }
+ public ICommand ChangeBackgroundImageCommand { get; }
+ public ICommand ClearBackgroundImageCommand { get; }
+
+ // Debounce timer for validation
+ private System.Timers.Timer _validateTimer;
+ private const double DefaultValidateDebounceMs =120; //120 ms debounce
+
+ // New: dirty-tracking
+ private readonly HashSet<TemplateItemViewModel> _dirtyItems = new HashSet<TemplateItemViewModel>();
+ private readonly object _dirtyLock = new();
+
+ // Keep reference to current collection subscription to unsubscribe later
+ private NotifyCollectionChangedEventHandler _itemsCollectionChangedHandler;
+
+ private bool _disposed = false;
 
  public TemplateDesignerViewModel()
  {
@@ -146,7 +178,6 @@ namespace Envelope_printing
 
  _dataService = new DataService();
  LoadTemplates();
- // Do not auto-create templates here; keep empty until user creates one
  LoadAvailableRecipientColumns();
 
  _ui_service.PropertyChanged += (s, e) => { if (e.PropertyName == nameof(UIService.IsMainNavExpanded)) OnPropertyChanged(nameof(LeftPanelHiddenPosition)); };
@@ -175,9 +206,25 @@ namespace Envelope_printing
  BindSelectedItemToColumnCommand = new RelayCommand(BindSelectedItemToColumn, _ => IsItemSelected && !string.IsNullOrEmpty(SelectedItemContentBinding));
  UnbindSelectedItemCommand = new RelayCommand(UnbindSelectedItem, _ => IsItemSelected && SelectedTemplateItem.IsBound);
  ChangeImageCommand = new RelayCommand(ChangeImage, _ => SelectedTemplateItem != null && SelectedTemplateItem.IsImage);
+ ChangeBackgroundImageCommand = new RelayCommand(ChangeBackgroundImage, _ => IsTemplateSelected);
+ ClearBackgroundImageCommand = new RelayCommand(_ => { if (SelectedTemplate == null) return; SelectedTemplate.BackgroundImagePath = string.Empty; OnPropertyChanged(nameof(CanvasBackgroundImagePath)); _dataService.UpdateTemplate(SelectedTemplate); }, _ => IsTemplateSelected);
 
  SelectedTemplateItems = new ObservableCollection<TemplateItemViewModel>();
+ // subscribe to changes on collection
+ _itemsCollectionChangedHandler = new NotifyCollectionChangedEventHandler(OnSelectedTemplateItemsChanged);
+ SelectedTemplateItems.CollectionChanged += _itemsCollectionChangedHandler;
  IsRightPanelOpen = false;
+ }
+
+ private void PersistPendingChanges()
+ {
+ try
+ {
+ if (SelectedTemplate == null) return;
+ // Save template and its items to prevent data loss when switching views
+ _dataService.UpdateTemplate(SelectedTemplate);
+ }
+ catch { }
  }
 
  private void LoadTemplates() => Templates = new ObservableCollection<Template>(_dataService.GetAllTemplates());
@@ -213,8 +260,10 @@ namespace Envelope_printing
  var newItem = new TemplateItem { PositionX =10, PositionY =10, Width = DefaultTextWidth, Height = DefaultTextHeight, StaticText = "Новый текст", TemplateId = SelectedTemplate.Id, ZIndex =5 };
  SelectedTemplate.Items.Add(newItem);
  var newItemVM = new TemplateItemViewModel(newItem);
+ newItemVM.PropertyChanged += OnTemplateItemPropertyChanged;
  SelectedTemplateItems.Add(newItemVM);
  SelectedTemplateItem = newItemVM;
+ MarkItemDirty(newItemVM);
  }
 
  private void AddImage(object obj)
@@ -226,19 +275,24 @@ namespace Envelope_printing
  var newItem = new TemplateItem { PositionX =15, PositionY =15, Width = DefaultImageWidth, Height = DefaultImageHeight, IsImage = true, ImagePath = dlg.FileName, TemplateId = SelectedTemplate.Id, ZIndex =4 };
  SelectedTemplate.Items.Add(newItem);
  var newItemVM = new TemplateItemViewModel(newItem);
+ newItemVM.PropertyChanged += OnTemplateItemPropertyChanged;
  SelectedTemplateItems.Add(newItemVM);
  SelectedTemplateItem = newItemVM;
+ MarkItemDirty(newItemVM);
  }
  }
 
  private void DeleteItem(object obj)
  {
  if (SelectedTemplateItem == null) return;
+ var toRemove = SelectedTemplateItem;
  SelectedTemplate.Items.Remove(SelectedTemplateItem.Model);
  SelectedTemplateItems.Remove(SelectedTemplateItem);
- // hide properties and clear selection
+ toRemove.PropertyChanged -= OnTemplateItemPropertyChanged;
+ // persist deletion immediately
+ try { _dataService.UpdateTemplate(SelectedTemplate); } catch { }
+ // clear selection; keep right panel state if it was showing canvas properties
  SelectedTemplateItem = null;
- IsRightPanelOpen = false;
  UpdatePropertiesPanelVisibility();
  }
 
@@ -249,6 +303,8 @@ namespace Envelope_printing
  if (item == null) return;
  double maxX = Math.Max(0, SelectedTemplate.EnvelopeWidth - item.Width);
  double maxY = Math.Max(0, SelectedTemplate.EnvelopeHeight - item.Height);
+ bool oversizedX = item.Width > SelectedTemplate.EnvelopeWidth;
+ bool oversizedY = item.Height > SelectedTemplate.EnvelopeHeight;
  if (item.PositionX <0) item.PositionX =0;
  if (item.PositionY <0) item.PositionY =0;
  if (item.PositionX > maxX) item.PositionX = maxX;
@@ -256,6 +312,15 @@ namespace Envelope_printing
  item.Transform.X = item.PositionX;
  item.Transform.Y = item.PositionY;
  item.CheckBounds(SelectedTemplate.EnvelopeWidth, SelectedTemplate.EnvelopeHeight);
+ if (oversizedX || oversizedY)
+ {
+ try
+ {
+ MessageBox.Show("Объект больше размеров холста. Он перемещён влево верхний угол, но часть может оставаться вне видимой области. Уменьшите его размер, чтобы полностью уместить.",
+ "Предупреждение", MessageBoxButton.OK, MessageBoxImage.Information);
+ }
+ catch { }
+ }
  }
 
  private void BindSelectedItemToColumn(object obj) { if (SelectedTemplateItem == null) return; SelectedTemplateItem.ContentBindingPath = SelectedItemContentBinding; }
@@ -264,7 +329,6 @@ namespace Envelope_printing
  private void SaveChanges(object obj)
  {
  if (SelectedTemplate == null) return;
- // normalize items to satisfy NOT NULL constraints
  foreach (var it in SelectedTemplate.Items)
  {
  if (it.ContentBindingPath == null) it.ContentBindingPath = string.Empty;
@@ -274,17 +338,17 @@ namespace Envelope_printing
  if (it.Foreground == null) it.Foreground = "Black";
  if (it.Background == null) it.Background = "Transparent";
  if (it.BorderBrush == null) it.BorderBrush = "Transparent";
+ if (it.ZIndex <0) it.ZIndex =0;
  }
  SelectedTemplate.Name = SelectedTemplateName; SelectedTemplate.EnvelopeWidth = SelectedTemplateWidth; SelectedTemplate.EnvelopeHeight = SelectedTemplateHeight;
  _dataService.UpdateTemplate(SelectedTemplate);
- MessageBox.Show("Изменения сохранены.", "Готово", MessageBoxButton.OK, MessageBoxImage.Information);
+ MessageBox.Show("Изменения сохранены.", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
  }
 
  private void PreviewTemplate(object obj)
  {
  try
  {
- // Lightweight VM: no printers, show exact canvas size, use first recipient if exists
  var vm = new PrintPreviewViewModel(skipInitialization: true)
  {
  SelectedTemplate = this.SelectedTemplate,
@@ -300,15 +364,15 @@ namespace Envelope_printing
  TemplateOffsetYMm =0,
  CurrentPage =1,
  PageSize =1,
- IsPrinting = true // hide all borders/overlays in preview
+ IsPrinting = true
  };
- // recipients: take first if present
  var list = _dataService.GetAllRecipients() ?? new System.Collections.Generic.List<Recipient>();
  vm.Recipients = new ObservableCollection<Recipient>(list);
  vm.LoadPreviewItems();
  var wnd = new FullPreviewWindow { DataContext = vm };
  if (Application.Current != null && Application.Current.MainWindow != wnd) wnd.Owner = Application.Current.MainWindow;
- wnd.Show();
+ // делаем модальным, чтобы блокировать основное окно
+ wnd.ShowDialog();
  }
  catch { }
  }
@@ -320,11 +384,19 @@ namespace Envelope_printing
  SelectedTemplateName = SelectedTemplate.Name;
  SelectedTemplateWidth = SelectedTemplate.EnvelopeWidth;
  SelectedTemplateHeight = SelectedTemplate.EnvelopeHeight;
+ // поднять уведомления об изменениях для настроек фона
+ OnPropertyChanged(nameof(CanvasBackgroundImagePath));
+ OnPropertyChanged(nameof(CanvasBackgroundStretch));
+ // unsubscribe old collection
+ if (SelectedTemplateItems != null && _itemsCollectionChangedHandler != null) SelectedTemplateItems.CollectionChanged -= _itemsCollectionChangedHandler;
  SelectedTemplateItems = new ObservableCollection<TemplateItemViewModel>(SelectedTemplate.Items.Select(item => new TemplateItemViewModel(item)));
- ValidateAllItemsBounds();
+ // subscribe to new collection
+ SelectedTemplateItems.CollectionChanged += _itemsCollectionChangedHandler;
+ // attach property changed handlers for initial items
+ foreach (var it in SelectedTemplateItems) it.PropertyChanged += OnTemplateItemPropertyChanged;
+ MarkAllDirty(); RequestValidateAllItemsBounds();
  }
  else { SelectedTemplateItems?.Clear(); }
- // Reset selection and keep properties panel closed by default
  SelectedTemplateItem = null;
  IsRightPanelOpen = false;
  OnPropertyChanged(nameof(IsTemplateSelected));
@@ -380,10 +452,126 @@ namespace Envelope_printing
  public void StopDragging()
  {
  if (!_isDragging || SelectedTemplateItem == null) return;
- _isDragging = false; SelectedTemplateItem.PositionX = SelectedTemplateItem.Transform.X; SelectedTemplateItem.PositionY = SelectedTemplateItem.Transform.Y; ValidateAllItemsBounds();
+ _isDragging = false; SelectedTemplateItem.PositionX = SelectedTemplateItem.Transform.X; SelectedTemplateItem.PositionY = SelectedTemplateItem.Transform.Y; MarkItemDirty(SelectedTemplateItem); RequestValidateAllItemsBounds();
+ // Persist change to DB/storage when user finishes drag
+ try { PersistPendingChanges(); } catch { }
  }
 
- public void ValidateAllItemsBounds() { if (SelectedTemplateItems == null || SelectedTemplate == null) return; foreach (var item in SelectedTemplateItems) item.CheckBounds(SelectedTemplate.EnvelopeWidth, SelectedTemplate.EnvelopeHeight); }
+ private void OnSelectedTemplateItemsChanged(object sender, NotifyCollectionChangedEventArgs e)
+ {
+ if (e.OldItems != null)
+ {
+ foreach (TemplateItemViewModel oldItem in e.OldItems)
+ {
+ oldItem.PropertyChanged -= OnTemplateItemPropertyChanged;
+ lock (_dirtyLock) { _dirtyItems.Remove(oldItem); }
+ }
+ }
+ if (e.NewItems != null)
+ {
+ foreach (TemplateItemViewModel newItem in e.NewItems)
+ {
+ newItem.PropertyChanged += OnTemplateItemPropertyChanged;
+ MarkItemDirty(newItem);
+ }
+ }
+ }
+
+ private void OnTemplateItemPropertyChanged(object sender, PropertyChangedEventArgs e)
+ {
+ // track changes that affect bounds/placement
+ if (sender is not TemplateItemViewModel item) return;
+ switch (e.PropertyName)
+ {
+ case nameof(TemplateItemViewModel.PositionX):
+ case nameof(TemplateItemViewModel.PositionY):
+ case nameof(TemplateItemViewModel.Width):
+ case nameof(TemplateItemViewModel.Height):
+ case nameof(TemplateItemViewModel.RotationDegrees):
+ case nameof(TemplateItemViewModel.BorderThickness):
+ case nameof(TemplateItemViewModel.Padding):
+ case nameof(TemplateItemViewModel.CornerRadius):
+ case "": // some changes may send empty property name
+ MarkItemDirty(item);
+ break;
+ default:
+ return; // ignore unrelated properties
+ }
+ // schedule debounced validation
+ RequestValidateAllItemsBounds();
+ }
+
+ private void MarkItemDirty(TemplateItemViewModel item)
+ {
+ if (item == null) return;
+ lock (_dirtyLock) { _dirtyItems.Add(item); }
+ }
+ private void MarkAllDirty()
+ {
+ if (SelectedTemplateItems == null) return;
+ lock (_dirtyLock)
+ {
+ _dirtyItems.Clear();
+ foreach (var it in SelectedTemplateItems) _dirtyItems.Add(it);
+ }
+ }
+
+ // Replace ValidateAllItemsBounds with one that validates only dirty items
+ public void ValidateAllItemsBounds()
+ {
+ // keep compatibility: full validation if no dirty tracking
+ if (SelectedTemplateItems == null || SelectedTemplate == null) return;
+ foreach (var item in SelectedTemplateItems) item.CheckBounds(SelectedTemplate.EnvelopeWidth, SelectedTemplate.EnvelopeHeight);
+ }
+
+ private void ValidateDirtyItemsBounds()
+ {
+ if (SelectedTemplateItems == null || SelectedTemplate == null) return;
+ List<TemplateItemViewModel> toValidate;
+ lock (_dirtyLock)
+ {
+ if (_dirtyItems.Count ==0) return;
+ toValidate = _dirtyItems.ToList();
+ _dirtyItems.Clear();
+ }
+ foreach (var item in toValidate)
+ {
+ // item may have been removed; guard
+ if (SelectedTemplateItems.Contains(item)) item.CheckBounds(SelectedTemplate.EnvelopeWidth, SelectedTemplate.EnvelopeHeight);
+ }
+ }
+
+ public void RequestValidateAllItemsBounds(double debounceMs = DefaultValidateDebounceMs)
+ {
+ try
+ {
+ if (_validateTimer == null)
+ {
+ _validateTimer = new System.Timers.Timer { AutoReset = false, Interval = debounceMs };
+ _validateTimer.Elapsed += (s, e) =>
+ {
+ _validateTimer?.Stop();
+ var d = Application.Current?.Dispatcher;
+ if (d != null)
+ {
+ d.BeginInvoke(new Action(() => ValidateDirtyItemsBounds()), System.Windows.Threading.DispatcherPriority.Background);
+ }
+ else
+ {
+ ValidateDirtyItemsBounds();
+ }
+ };
+ }
+ else
+ {
+ _validateTimer.Interval = debounceMs;
+ }
+ _validateTimer.Stop();
+ _validateTimer.Start();
+ }
+ catch { }
+ }
+
  public void CalculateAndSetInitialZoom()
  {
  var viewSize = GetViewSizeRequested?.Invoke(); if (viewSize == null || viewSize.Value.Width <=0 || viewSize.Value.Height <=0) return;
@@ -393,30 +581,55 @@ namespace Envelope_printing
  }
 
  private void ChangeImage(object obj) { if (SelectedTemplateItem == null) return; var dlg = new Microsoft.Win32.OpenFileDialog { Title = "Выбор изображения", Filter = "Изображения|*.png;*.jpg;*.jpeg;*.bmp" }; if (dlg.ShowDialog() == true) { SelectedTemplateItem.ImagePath = dlg.FileName; } }
- private bool CanMoveUp(TemplateItemViewModel item) => item != null && SelectedTemplateItems != null && item.ZIndex <10;
- private bool CanMoveDown(TemplateItemViewModel item) => item != null && SelectedTemplateItems != null && item.ZIndex >0;
- private void MoveItemUp(TemplateItemViewModel item) { if (item == null || SelectedTemplateItems == null) return; int cur = item.ZIndex; if (cur >=10) return; var target = SelectedTemplateItems.Where(i => i.ZIndex > cur).OrderBy(i => i.ZIndex).FirstOrDefault(); if (target != null) { target.ZIndex = cur; item.ZIndex = Math.Min(10, cur +1); } else { item.ZIndex = Math.Min(10, cur +1); } ReorderByZ(); }
- private void MoveItemDown(TemplateItemViewModel item) { if (item == null || SelectedTemplateItems == null) return; int cur = item.ZIndex; if (cur <=0) return; var target = SelectedTemplateItems.Where(i => i.ZIndex < cur).OrderByDescending(i => i.ZIndex).FirstOrDefault(); if (target != null) { target.ZIndex = cur; item.ZIndex = Math.Max(0, cur -1); } else { item.ZIndex = Math.Max(0, cur -1); } ReorderByZ(); }
- private void BringToFront(TemplateItemViewModel item) { if (item == null || SelectedTemplateItems == null) return; int max = SelectedTemplateItems.Max(i => i.ZIndex); item.ZIndex = Math.Min(10, Math.Max(max, item.ZIndex) +1); ReorderByZ(); }
- private void SendToBack(TemplateItemViewModel item) { if (item == null || SelectedTemplateItems == null) return; int min = SelectedTemplateItems.Min(i => i.ZIndex); item.ZIndex = Math.Max(0, Math.Min(min, item.ZIndex) -1); ReorderByZ(); }
- private void ReorderByZ()
- {
- if (SelectedTemplateItems == null) return;
- // sort by z and update Panel.ZIndex via binding; no need to rebuild collection which can disturb initial layout
- var ordered = SelectedTemplateItems.OrderBy(i => i.ZIndex).ToList();
- for (int i =0; i < ordered.Count; i++)
- {
- var item = ordered[i];
- int currentIndex = SelectedTemplateItems.IndexOf(item);
- if (currentIndex != i)
- {
- SelectedTemplateItems.Move(currentIndex, i);
- }
- }
- }
- public ObservableCollection<TemplateItemViewModel> CanvasItems => SelectedTemplateItems;
+ private void ChangeBackgroundImage(object obj) { if (SelectedTemplate == null) return; var dlg = new Microsoft.Win32.OpenFileDialog { Title = "Фон холста", Filter = "Изображения|*.png;*.jpg;*.jpeg;*.bmp" }; if (dlg.ShowDialog() == true) { SelectedTemplate.BackgroundImagePath = dlg.FileName; OnPropertyChanged(nameof(CanvasBackgroundImagePath)); _dataService.UpdateTemplate(SelectedTemplate); } }
 
- // Ensure DB not-null by normalizing nulls to empty strings
- private static string Normalize(string s) => s ?? string.Empty;
+ private bool CanMoveUp(TemplateItemViewModel item) => item != null;
+ private bool CanMoveDown(TemplateItemViewModel item) => item != null && item.ZIndex >0;
+ private void MoveItemUp(TemplateItemViewModel item) { if (item == null) return; item.ZIndex +=1; }
+ private void MoveItemDown(TemplateItemViewModel item) { if (item == null) return; if (item.ZIndex >0) item.ZIndex -=1; }
+ private void BringToFront(TemplateItemViewModel item) { if (item == null || SelectedTemplateItems == null) return; int max = SelectedTemplateItems.Max(i => i.ZIndex); item.ZIndex = max +1; }
+ private void SendToBack(TemplateItemViewModel item) { if (item == null || SelectedTemplateItems == null) return; int min = SelectedTemplateItems.Min(i => i.ZIndex); item.ZIndex = Math.Max(0, min -1); }
+
+ public void Dispose()
+ {
+ if (_disposed) return;
+ _disposed = true;
+ try
+ {
+ // stop and dispose timer
+ try { _validateTimer?.Stop(); _validateTimer?.Dispose(); } catch { }
+ _validateTimer = null;
+
+ // unsubscribe collection changed
+ try
+ {
+ if (SelectedTemplateItems != null && _itemsCollectionChangedHandler != null)
+ SelectedTemplateItems.CollectionChanged -= _itemsCollectionChangedHandler;
+ }
+ catch { }
+
+ // unsubscribe item property changed
+ try
+ {
+ if (SelectedTemplateItems != null)
+ {
+ foreach (var it in SelectedTemplateItems)
+ {
+ try { it.PropertyChanged -= OnTemplateItemPropertyChanged; } catch { }
+ }
+ }
+ }
+ catch { }
+
+ // drop references to large data
+ try { SelectedTemplateItems = null; } catch { }
+ try { Templates = null; } catch { }
+ try { SelectedTemplate = null; } catch { }
+ }
+ catch { }
+ }
+
+ // finalizer just in case
+ ~TemplateDesignerViewModel() { Dispose(); }
  }
 }

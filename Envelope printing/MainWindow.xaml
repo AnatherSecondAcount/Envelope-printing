@@ -5,16 +5,17 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Envelope_printing"
         mc:Ignorable="d"
-        Title="Envelope Printer" Height="600" Width="900"
+        Title="Печать конвертов" Height="600" Width="900"
         WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource AppBackground}"
         Icon="{DynamicResource AppLogo}">
 
     <Window.Resources>
         <!-- Конвертер для управления видимостью -->
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
-        <!-- Базовый стиль для кнопок и переключателей навигации -->
-        <Style x:Key="NavButtonBaseStyle" TargetType="ButtonBase">
+        <!-- Navigation button base, theme-aware -->
+        <Style x:Key="NavButtonBaseStyle" TargetType="{x:Type ButtonBase}">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
@@ -23,9 +24,12 @@
             <Setter Property="Height" Value="40"/>
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <!-- Tooltips: show only when panel is collapsed -->
+            <Setter Property="ToolTipService.IsEnabled" Value="True"/>
+            <Setter Property="ToolTipService.Placement" Value="Right"/>
             <Setter Property="Template">
                 <Setter.Value>
-                    <ControlTemplate TargetType="ButtonBase">
+                    <ControlTemplate TargetType="{x:Type ButtonBase}">
                         <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="4">
                             <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
                         </Border>
@@ -34,8 +38,11 @@
             </Setter>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#EAF2FA"/>
+                    <Setter Property="Background" Value="{DynamicResource ButtonHoverBrush}"/>
                 </Trigger>
+                <DataTrigger Binding="{Binding DataContext.IsLeftPanelExpanded, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                    <Setter Property="ToolTipService.IsEnabled" Value="False"/>
+                </DataTrigger>
             </Style.Triggers>
         </Style>
 
@@ -53,12 +60,23 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+
+        <!-- При свернутой панели сужаем внутреннюю сетку кнопки до42px и центрируем её; добавляем правый внутренний отступ для головы бейджа -->
+        <Style x:Key="CollapsedNavGridStyle" TargetType="Grid">
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding DataContext.IsLeftPanelExpanded, RelativeSource={RelativeSource AncestorType=Window}}" Value="False">
+                    <Setter Property="Width" Value="42"/>
+                    <Setter Property="HorizontalAlignment" Value="Center"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
 
     <!-- Root host contains Splash layer and App layer -->
-    <Grid>
+    <Grid Background="{DynamicResource AppBackground}">
         <!-- Splash overlay -->
-        <Grid x:Name="SplashGrid" Background="#F7F9FC">
+        <Grid x:Name="SplashGrid" Background="{DynamicResource AppBackground}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
@@ -67,11 +85,11 @@
             <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16">
                 <!-- Optional logo if added later as DynamicResource AppLogo -->
                 <Image Width="72" Height="72" Margin="0,0,0,10" Source="{DynamicResource AppLogo}" Stretch="Uniform"/>
-                <TextBlock Text="Печать конвертов" FontSize="22" FontWeight="SemiBold" Foreground="#333" HorizontalAlignment="Center"/>
-                <TextBlock Text="Загрузка..." Margin="0,6,0,12" Foreground="#666" HorizontalAlignment="Center"/>
+                <TextBlock Text="Печать конвертов" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                <TextBlock Text="Загрузка..." Margin="0,6,0,12" HorizontalAlignment="Center"/>
                 <!-- Simple spinner -->
                 <Grid Width="48" Height="48">
-                    <Ellipse Width="48" Height="48" Stroke="#FF0078D4" StrokeThickness="4" StrokeDashArray="23" RenderTransformOrigin="0.5,0.5">
+                    <Ellipse Width="48" Height="48" Stroke="{DynamicResource AccentBrush}" StrokeThickness="4" StrokeDashArray="23" RenderTransformOrigin="0.5,0.5">
                         <Ellipse.RenderTransform>
                             <RotateTransform x:Name="SpinnerRotate" Angle="0"/>
                         </Ellipse.RenderTransform>
@@ -90,19 +108,20 @@
         </Grid>
 
         <!-- App layer: original content wrapped and initially hidden -->
-        <Grid x:Name="AppRoot" Visibility="Collapsed">
+        <Grid x:Name="AppRoot" Visibility="Collapsed" Background="{DynamicResource AppBackground}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="{Binding LeftPanelWidth}"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
             <!-- ЛЕВАЯ НАВИГАЦИОННАЯ ПАНЕЛЬ -->
-            <Border Grid.Column="0" Background="#F8F9FA" BorderBrush="#E1E4E8" BorderThickness="1" Margin="5" CornerRadius="8">
+            <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource FieldBorderBrush}" BorderThickness="1" Margin="5" CornerRadius="8">
                 <Border.Effect>
                     <DropShadowEffect ShadowDepth="2" Color="Gray" Opacity="0.15" BlurRadius="8"/>
                 </Border.Effect>
 
-                <Grid ClipToBounds="True">
+                <!-- allow notification dot to overflow without clipping -->
+                <Grid ClipToBounds="False">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <!-- Верхняя группа -->
@@ -113,8 +132,8 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0" Margin="4">
-                        <Button Style="{StaticResource NavButtonStyle}" Command="{Binding ShowHomeCommand}">
-                            <Grid>
+                        <Button Style="{StaticResource NavButtonStyle}" Command="{Binding ShowHomeCommand}" ToolTip="На главную">
+                            <Grid Style="{StaticResource CollapsedNavGridStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="42"/>
                                     <ColumnDefinition Width="*"/>
@@ -123,8 +142,8 @@
                                 <TextBlock Grid.Column="1" Text="На главную" Style="{StaticResource NavButtonTextStyle}"/>
                             </Grid>
                         </Button>
-                        <Button Style="{StaticResource NavButtonStyle}" Command="{Binding ShowPrintPreviewCommand}" FontWeight="Bold">
-                            <Grid>
+                        <Button Style="{StaticResource NavButtonStyle}" Command="{Binding ShowPrintPreviewCommand}" FontWeight="Bold" ToolTip="Печать конвертов">
+                            <Grid Style="{StaticResource CollapsedNavGridStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="42"/>
                                     <ColumnDefinition Width="*"/>
@@ -137,8 +156,8 @@
                     </StackPanel>
 
                     <StackPanel Grid.Row="2" VerticalAlignment="Bottom" Margin="4">
-                        <Button Style="{StaticResource NavButtonStyle}" Command="{Binding ShowRecipientEditorCommand}">
-                            <Grid>
+                        <Button Style="{StaticResource NavButtonStyle}" Command="{Binding ShowRecipientEditorCommand}" ToolTip="База получателей">
+                            <Grid Style="{StaticResource CollapsedNavGridStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="42"/>
                                     <ColumnDefinition Width="*"/>
@@ -147,30 +166,40 @@
                                 <TextBlock Grid.Column="1" Text="База получателей" Style="{StaticResource NavButtonTextStyle}"/>
                             </Grid>
                         </Button>
-                        <Button Style="{StaticResource NavButtonStyle}" Command="{Binding ShowTemplateDesignerCommand}">
-                            <Grid>
+                        <Button Style="{StaticResource NavButtonStyle}" Command="{Binding ShowTemplateDesignerCommand}" ToolTip="Дизайнер">
+                            <Grid Style="{StaticResource CollapsedNavGridStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="42"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <!-- Use edit-like icon for designer -->
                                 <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets" Text="&#xE70F;" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="16"/>
                                 <TextBlock Grid.Column="1" Text="Дизайнер" Style="{StaticResource NavButtonTextStyle}"/>
                             </Grid>
                         </Button>
-                        <Button Style="{StaticResource NavButtonStyle}" Command="{Binding ShowSettingsCommand}">
-                            <Grid>
+                        <Button Style="{StaticResource NavButtonStyle}" Command="{Binding ShowSettingsCommand}" ToolTip="Настройки">
+                            <Grid Style="{StaticResource CollapsedNavGridStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="42"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets" Text="&#xE713;" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="16"/>
+                                <Grid Grid.Column="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ClipToBounds="False">
+                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE713;" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="16"/>
+                                    <!-- Overlay canvas keeps icon centered while badge can occupy extra space -->
+                                    <Canvas HorizontalAlignment="Center" VerticalAlignment="Center" Width="42" Height="42" IsHitTestVisible="False" ClipToBounds="False">
+                                        <Ellipse Width="10" Height="10" Fill="#2B88D8" Stroke="White" StrokeThickness="1.2"
+                                                 Canvas.Left="27" Canvas.Top="8">
+                                            <Ellipse.Visibility>
+                                                <Binding Path="HasUpdateAvailable" Converter="{StaticResource BoolToVis}"/>
+                                            </Ellipse.Visibility>
+                                        </Ellipse>
+                                    </Canvas>
+                                </Grid>
                                 <TextBlock Grid.Column="1" Text="Настройки" Style="{StaticResource NavButtonTextStyle}"/>
                             </Grid>
                         </Button>
                         <Separator Margin="4"/>
-                        <ToggleButton Style="{StaticResource NavToggleButtonStyle}" IsChecked="{Binding IsLeftPanelExpanded, Mode=TwoWay}">
-                            <Grid>
+                        <ToggleButton Style="{StaticResource NavToggleButtonStyle}" IsChecked="{Binding IsLeftPanelExpanded, Mode=TwoWay}" ToolTip="Свернуть/Развернуть панель">
+                            <Grid Style="{StaticResource CollapsedNavGridStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="42"/>
                                     <ColumnDefinition Width="*"/>
@@ -185,7 +214,7 @@
 
             <!-- ОБЛАСТЬ КОНТЕНТА -->
             <Border Grid.Column="1" Margin="0,5,5,5" CornerRadius="8" SnapsToDevicePixels="True" Background="Transparent">
-                <Border Background="White" BorderBrush="#E1E4E8" BorderThickness="1" CornerRadius="8">
+                <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource FieldBorderBrush}" BorderThickness="1" CornerRadius="8">
                     <Border.Effect>
                         <DropShadowEffect ShadowDepth="2" Color="Gray" Opacity="0.15" BlurRadius="8"/>
                     </Border.Effect>
