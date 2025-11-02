@@ -1,35 +1,16 @@
 <Application x:Class="Envelope_printing.App"
  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- xmlns:local="clr-namespace:Envelope_printing"
- xmlns:designer="clr-namespace:Envelope_printing.Designer">
+ xmlns:local="clr-namespace:Envelope_printing">
  <Application.Resources>
  <ResourceDictionary>
  <ResourceDictionary.MergedDictionaries>
- <!-- base (light) styles -->
  <ResourceDictionary Source="/Styles/MinimalisticStyles.xaml"/>
- <!-- theme placeholder; swapped to DarkTheme.xaml at runtime -->
- <ResourceDictionary/>
  </ResourceDictionary.MergedDictionaries>
 
- <!-- Placeholder for AppLogo to avoid XAML compile errors; replaced at runtime if real image is found -->
- <DrawingImage x:Key="AppLogo">
- <DrawingImage.Drawing>
- <GeometryDrawing />
- </DrawingImage.Drawing>
- </DrawingImage>
-
+ <!-- Map VM to View for Home tab -->
  <DataTemplate DataType="{x:Type local:HomeViewModel}">
  <local:HomeView/>
- </DataTemplate>
- <DataTemplate DataType="{x:Type local:RecipientEditorViewModel}">
- <local:RecipientEditorView/>
- </DataTemplate>
- <DataTemplate DataType="{x:Type local:TemplateDesignerViewModel}">
- <designer:TemplateDesignerView/>
- </DataTemplate>
- <DataTemplate DataType="{x:Type local:PrintPreviewViewModel}">
- <local:PrintPreviewView/>
  </DataTemplate>
  </ResourceDictionary>
  </Application.Resources>

@@ -1,8 +1,12 @@
 ﻿using EnvelopePrinter.Core;
+using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Input;
 
 namespace Envelope_printing
@@ -14,12 +18,13 @@ namespace Envelope_printing
         private readonly DataService _dataService;
         private ObservableCollection<RecipientViewModel> _recipientsCollection;
         private RecipientViewModel _selectedRecipient;
+        private ICollectionView _recipientsView; // представление с учётом сортировки/фильтрации
 
         // Поля для состояния поиска
         private string _searchText;
         private bool _isSearchVisible;
         private string _matchInfo;
-        private List<RecipientViewModel> _currentMatches = new List<RecipientViewModel>();
+        private List<RecipientViewModel> _currentMatches = new();
         private int _currentMatchIndex = -1;
 
         #endregion
@@ -32,6 +37,7 @@ namespace Envelope_printing
         public event Func<string> RequestBackupPath;
         public event Func<string> RequestRestorePath;
         public event Action<RecipientViewModel> ScrollToRecipientRequested;
+        public event Action EnsureGridFocusRequested;
 
         #endregion
 
@@ -40,8 +46,19 @@ namespace Envelope_printing
         public ObservableCollection<RecipientViewModel> RecipientsCollection
         {
             get => _recipientsCollection;
-            set { _recipientsCollection = value; OnPropertyChanged(); }
+            set
+            {
+                _recipientsCollection = value;
+                OnPropertyChanged();
+                // Обновляем/создаём представление
+                _recipientsView = CollectionViewSource.GetDefaultView(_recipientsCollection);
+                OnPropertyChanged(nameof(RecipientsView));
+            }
         }
+
+        // Представление с текущей сортировкой для корректного перемещения
+        public ICollectionView RecipientsView => _recipientsView ??= CollectionViewSource.GetDefaultView(RecipientsCollection);
+
         public RecipientViewModel SelectedRecipient
         {
             get => _selectedRecipient;
@@ -49,7 +66,6 @@ namespace Envelope_printing
             {
                 _selectedRecipient = value;
                 OnPropertyChanged();
-                // Уведомляем команды, что их доступность могла измениться
                 (MoveUpCommand as RelayCommand)?.RaiseCanExecuteChanged();
                 (MoveDownCommand as RelayCommand)?.RaiseCanExecuteChanged();
             }
@@ -62,12 +78,7 @@ namespace Envelope_printing
         public string SearchText
         {
             get => _searchText;
-            set
-            {
-                _searchText = value;
-                OnPropertyChanged();
-                PerformSearch(); // Запускаем поиск при каждом изменении текста
-            }
+            set { _searchText = value; OnPropertyChanged(); PerformSearch(); }
         }
         public string MatchInfo
         {
@@ -79,18 +90,13 @@ namespace Envelope_printing
 
         #region Команды
 
-        // Основные команды (CRUD)
         public ICommand AddCommand { get; }
         public ICommand EditCommand { get; }
         public ICommand DeleteCommand { get; }
-
-        // Команды из меню "Файл"
         public ICommand ExportToExcelCommand { get; }
         public ICommand ImportFromExcelCommand { get; }
         public ICommand BackupCommand { get; }
         public ICommand RestoreCommand { get; }
-
-        // Команды поиска
         public ICommand ShowSearchCommand { get; }
         public ICommand CloseSearchCommand { get; }
         public ICommand NextMatchCommand { get; }
@@ -107,7 +113,6 @@ namespace Envelope_printing
             _dataService = new DataService();
             LoadData();
 
-            // Инициализация команд
             AddCommand = new RelayCommand(AddRecipient);
             EditCommand = new RelayCommand(EditRecipient, CanEditOrDeleteRecipient);
             DeleteCommand = new RelayCommand(DeleteRecipient, CanEditOrDeleteRecipient);
@@ -117,10 +122,10 @@ namespace Envelope_printing
             BackupCommand = new RelayCommand(BackupDatabase);
             RestoreCommand = new RelayCommand(RestoreDatabase);
 
-            ShowSearchCommand = new RelayCommand(p => IsSearchVisible = true);
+            ShowSearchCommand = new RelayCommand(_ => IsSearchVisible = true);
             CloseSearchCommand = new RelayCommand(CloseSearch);
-            NextMatchCommand = new RelayCommand(NavigateToNextMatch, p => _currentMatches.Any());
-            PreviousMatchCommand = new RelayCommand(NavigateToPreviousMatch, p => _currentMatches.Any());
+            NextMatchCommand = new RelayCommand(NavigateToNextMatch, _ => _currentMatches.Any());
+            PreviousMatchCommand = new RelayCommand(NavigateToPreviousMatch, _ => _currentMatches.Any());
             MoveUpCommand = new RelayCommand(MoveUp, _ => CanMoveUp());
             MoveDownCommand = new RelayCommand(MoveDown, _ => CanMoveDown());
             SelectPreviousRowCommand = new RelayCommand(_ => SelectRelative(-1), _ => RecipientsCollection != null && RecipientsCollection.Any());
@@ -130,36 +135,28 @@ namespace Envelope_printing
         private void LoadData()
         {
             var recipientsInDb = _dataService.GetAllRecipients();
-            // Превращаем каждую модель Recipient в ее ViewModel-обертку RecipientViewModel
             var viewModels = recipientsInDb.Select(model => new RecipientViewModel(model));
             RecipientsCollection = new ObservableCollection<RecipientViewModel>(viewModels);
+            SelectedRecipient = RecipientsCollection.FirstOrDefault();
         }
-
-        private bool CanEditOrDeleteRecipient(object obj)
-        {
-            return SelectedRecipient != null;
-        }
+        private bool CanEditOrDeleteRecipient(object obj) => SelectedRecipient != null;
 
         #region Логика основных команд (CRUD)
 
         private void AddRecipient(object obj)
         {
-            var newRecipientModel = new Recipient(); // Создаем пустую модель данных
+            var newRecipientModel = new Recipient();
             var vm = new EditRecipientViewModel(newRecipientModel, "Добавление нового получателя");
-
             bool? result = ShowEditDialogRequested?.Invoke(vm);
-
             if (result == true)
             {
                 _dataService.AddRecipient(newRecipientModel);
-                // В коллекцию добавляем не саму модель, а ее ViewModel-обертку
                 RecipientsCollection.Add(new RecipientViewModel(newRecipientModel));
             }
         }
 
         private void EditRecipient(object obj)
         {
-            // Создаем копию модели данных, чтобы не изменять оригинал до нажатия "OK"
             var recipientCopy = new Recipient
             {
                 Id = SelectedRecipient.Model.Id,
@@ -170,18 +167,11 @@ namespace Envelope_printing
                 Region = SelectedRecipient.Model.Region,
                 Country = SelectedRecipient.Model.Country
             };
-
             var vm = new EditRecipientViewModel(recipientCopy, "Редактирование получателя");
             bool? result = ShowEditDialogRequested?.Invoke(vm);
-
             if (result == true)
             {
                 _dataService.UpdateRecipient(recipientCopy);
-
-                // Обновляем данные в оригинальной модели.
-                // Так как RecipientViewModel пробрасывает свойства из Model и реализует INotifyPropertyChanged,
-                // то UI не обновится. Нужно обновить саму модель и вызвать OnPropertyChanged для свойств в RecipientViewModel.
-                // Проще всего перезагрузить данные.
                 LoadData();
             }
         }
@@ -189,217 +179,189 @@ namespace Envelope_printing
         private void DeleteRecipient(object obj)
         {
             var result = MessageBox.Show($"Вы уверены, что хотите удалить запись '{SelectedRecipient.OrganizationName}'?",
-                                         "Подтверждение удаления", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (result == MessageBoxResult.Yes)
-            {
-                // Передаем в сервис саму модель данных
-                _dataService.DeleteRecipient(SelectedRecipient.Model);
-                // А из коллекции удаляем ViewModel-обертку
-                RecipientsCollection.Remove(SelectedRecipient);
-            }
-        }
+ "Подтверждение удаления", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+ if (result == MessageBoxResult.Yes)
+ {
+ _dataService.DeleteRecipient(SelectedRecipient.Model);
+ RecipientsCollection.Remove(SelectedRecipient);
+ if (RecipientsCollection.Any())
+ {
+ SelectedRecipient = RecipientsCollection.First();
+ ScrollToRecipientRequested?.Invoke(SelectedRecipient);
+ EnsureGridFocusRequested?.Invoke();
+ }
+ }
+ }
 
-        // Навигация по выбору (без перемещения в списке)
-        private void SelectRelative(int delta)
-        {
-            if (RecipientsCollection == null || RecipientsCollection.Count == 0) return;
-            int current = SelectedRecipient != null ? RecipientsCollection.IndexOf(SelectedRecipient) : -1;
-            int next = current + delta;
-            if (next < 0) next = 0;
-            if (next >= RecipientsCollection.Count) next = RecipientsCollection.Count - 1;
-            SelectedRecipient = RecipientsCollection[next];
-            ScrollToRecipientRequested?.Invoke(SelectedRecipient);
-        }
+ // Selection navigation by relative offset using the current view (with sort)
+ private void SelectRelative(int delta)
+ {
+ if (RecipientsCollection == null || RecipientsCollection.Count ==0) return;
+ // работаем по отображаемому представлению
+ var view = RecipientsView;
+ var current = SelectedRecipient;
+ if (current == null)
+ {
+ // если ничего не выбрано, выбрать первый элемент отображаемого списка
+ view.MoveCurrentToFirst();
+ SelectedRecipient = view.CurrentItem as RecipientViewModel;
+ ScrollToRecipientRequested?.Invoke(SelectedRecipient);
+ EnsureGridFocusRequested?.Invoke();
+ return;
+ }
+ view.MoveCurrentTo(current);
+ int index = view.CurrentPosition;
+ int nextIndex = Math.Clamp(index + delta,0, view.Cast<object>().Count() -1);
+ view.MoveCurrentToPosition(nextIndex);
+ SelectedRecipient = view.CurrentItem as RecipientViewModel;
+ ScrollToRecipientRequested?.Invoke(SelectedRecipient);
+ EnsureGridFocusRequested?.Invoke();
+ }
 
-        #endregion
+ // Поиск
+ private void PerformSearch()
+ {
+ // Сначала сбрасываем подсветку у всех
+ foreach (var r in RecipientsCollection) r.IsMatch = false;
+ _currentMatches.Clear();
 
-        #region Логика команд Файл-Меню
+ if (string.IsNullOrWhiteSpace(SearchText)) { UpdateMatchInfo(); return; }
 
-        private void ExportToExcel(object obj)
-        {
-            string destinationPath = RequestExportExcelPath?.Invoke();
-            if (string.IsNullOrEmpty(destinationPath)) return;
-            try
-            {
-                _dataService.ExportToExcel(destinationPath);
-                MessageBox.Show("Данные успешно экспортированы!", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Ошибка при экспорте: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
+ var s = SearchText.ToLower();
+ _currentMatches = RecipientsCollection.Where(vm =>
+ (vm.OrganizationName?.ToLower() ?? "").Contains(s) ||
+ (vm.AddressLine1?.ToLower() ?? "").Contains(s) ||
+ (vm.PostalCode?.ToLower() ?? "").Contains(s) ||
+ (vm.City?.ToLower() ?? "").Contains(s) ||
+ (vm.Region?.ToLower() ?? "").Contains(s) ||
+ (vm.Country?.ToLower() ?? "").Contains(s)
+ ).ToList();
 
-        private void ImportFromExcel(object obj)
-        {
-            string sourcePath = RequestImportExcelPath?.Invoke();
-            if (string.IsNullOrEmpty(sourcePath)) return;
-            var result = MessageBox.Show("Добавить данные из файла Excel в базу?", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (result != MessageBoxResult.Yes) return;
+ foreach (var m in _currentMatches) m.IsMatch = true;
 
-            try
-            {
-                _dataService.ImportFromExcel(sourcePath);
-                MessageBox.Show("Данные успешно импортированы!", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
-                LoadData();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Ошибка при импорте: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
+ _currentMatchIndex = _currentMatches.Any() ?0 : -1;
+ if (_currentMatchIndex ==0) SelectAndScrollToCurrentMatch();
 
-        private void BackupDatabase(object obj)
-        {
-            string destinationPath = RequestBackupPath?.Invoke();
-            if (string.IsNullOrEmpty(destinationPath)) return;
-            try
-            {
-                _dataService.BackupDatabase(destinationPath);
-                MessageBox.Show("Резервная копия успешно создана!", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Ошибка при создании копии: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
+ UpdateMatchInfo();
+ }
+ private void NavigateToNextMatch(object obj)
+ { if (!_currentMatches.Any()) return; _currentMatchIndex = (_currentMatchIndex +1) % _currentMatches.Count; SelectAndScrollToCurrentMatch(); UpdateMatchInfo(); }
+ private void NavigateToPreviousMatch(object obj)
+ { if (!_currentMatches.Any()) return; _currentMatchIndex = (_currentMatchIndex -1 + _currentMatches.Count) % _currentMatches.Count; SelectAndScrollToCurrentMatch(); UpdateMatchInfo(); }
+ private void SelectAndScrollToCurrentMatch()
+ { SelectedRecipient = _currentMatches[_currentMatchIndex]; ScrollToRecipientRequested?.Invoke(SelectedRecipient); EnsureGridFocusRequested?.Invoke(); }
+ private void CloseSearch(object obj) { IsSearchVisible = false; SearchText = string.Empty; }
+ private void UpdateMatchInfo()
+ { MatchInfo = !_currentMatches.Any() ? (string.IsNullOrWhiteSpace(SearchText) ? "" : "Нет совпадений") : $"{_currentMatchIndex +1} из {_currentMatches.Count}"; }
 
-        private void RestoreDatabase(object obj)
-        {
-            string sourcePath = RequestRestorePath?.Invoke();
-            if (string.IsNullOrEmpty(sourcePath)) return;
-            var result = MessageBox.Show("ВНИМАНИЕ! Текущая база будет заменена.\nПродолжить восстановление?",
-                                         "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (result != MessageBoxResult.Yes) return;
+ // Перестановка с учётом текущего порядка
+ private bool CanMoveUp()
+ {
+ if (SelectedRecipient == null || RecipientsCollection == null) return false;
+ var view = RecipientsView; view.MoveCurrentTo(SelectedRecipient); return view.CurrentPosition >0;
+ }
+ private void MoveUp(object obj)
+ {
+ var view = RecipientsView; view.MoveCurrentTo(SelectedRecipient); int index = view.CurrentPosition; if (index <=0) return;
+ var ordered = view.Cast<RecipientViewModel>().ToList(); var item = ordered[index]; var prev = ordered[index -1];
+ int iItem = RecipientsCollection.IndexOf(item); int iPrev = RecipientsCollection.IndexOf(prev);
+ if (iItem > iPrev) RecipientsCollection.Move(iItem, iPrev); else RecipientsCollection.Move(iPrev, iItem);
+ SelectedRecipient = prev; ScrollToRecipientRequested?.Invoke(SelectedRecipient); EnsureGridFocusRequested?.Invoke();
+ }
+ private bool CanMoveDown()
+ {
+ if (SelectedRecipient == null || RecipientsCollection == null) return false;
+ var view = RecipientsView; view.MoveCurrentTo(SelectedRecipient); return view.CurrentPosition < view.Cast<object>().Count() -1;
+ }
+ private void MoveDown(object obj)
+ {
+ var view = RecipientsView; view.MoveCurrentTo(SelectedRecipient); int index = view.CurrentPosition; if (index >= view.Cast<object>().Count() -1) return;
+ var ordered = view.Cast<RecipientViewModel>().ToList(); var item = ordered[index]; var next = ordered[index +1];
+ int iItem = RecipientsCollection.IndexOf(item); int iNext = RecipientsCollection.IndexOf(next);
+ if (iItem < iNext) RecipientsCollection.Move(iItem, iNext); else RecipientsCollection.Move(iNext, iItem);
+ SelectedRecipient = next; ScrollToRecipientRequested?.Invoke(SelectedRecipient); EnsureGridFocusRequested?.Invoke();
+ }
 
-            try
-            {
-                _dataService.RestoreDatabase(sourcePath);
-                MessageBox.Show("База данных успешно восстановлена!", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
-                LoadData();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Ошибка при восстановлении: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
+ #endregion
 
-        #endregion
+ #region Логика команд Файл-Меню
 
-        #region Логика Поиска
+ private void ExportToExcel(object obj)
+ {
+ string destinationPath = RequestExportExcelPath?.Invoke();
+ if (string.IsNullOrEmpty(destinationPath)) return;
+ try
+ {
+ _dataService.ExportToExcel(destinationPath);
+ MessageBox.Show("Данные успешно экспортированы!", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
+ }
+ catch (Exception ex)
+ {
+ MessageBox.Show($"Ошибка при экспорте: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+ }
+ }
 
-        private void PerformSearch()
-        {
-            // Сначала сбрасываем подсветку у всех
-            foreach (var recipient in RecipientsCollection) recipient.IsMatch = false;
-            _currentMatches.Clear();
+ private void ImportFromExcel(object obj)
+ {
+ string sourcePath = RequestImportExcelPath?.Invoke();
+ if (string.IsNullOrEmpty(sourcePath)) return;
+ var result = MessageBox.Show("Добавить данные из файла Excel в базу?", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question);
+ if (result != MessageBoxResult.Yes) return;
 
-            if (string.IsNullOrWhiteSpace(SearchText))
-            {
-                UpdateMatchInfo();
-                return;
-            }
+ try
+ {
+ _dataService.ImportFromExcel(sourcePath);
+ MessageBox.Show("Данные успешно импортированы!", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
+ LoadData();
+ }
+ catch (Exception ex)
+ {
+ MessageBox.Show($"Ошибка при импорте: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+ }
+ }
 
-            var searchTextLower = SearchText.ToLower();
-            _currentMatches = RecipientsCollection.Where(vm =>
-                (vm.OrganizationName?.ToLower() ?? "").Contains(searchTextLower) ||
-                (vm.AddressLine1?.ToLower() ?? "").Contains(searchTextLower) ||
-                (vm.PostalCode?.ToLower() ?? "").Contains(searchTextLower) ||
-                (vm.City?.ToLower() ?? "").Contains(searchTextLower) ||
-                (vm.Region?.ToLower() ?? "").Contains(searchTextLower) ||
-                (vm.Country?.ToLower() ?? "").Contains(searchTextLower)
-            ).ToList();
+ private void BackupDatabase(object obj)
+ {
+ string destinationPath = RequestBackupPath?.Invoke();
+ if (string.IsNullOrEmpty(destinationPath)) return;
+ try
+ {
+ _dataService.BackupDatabase(destinationPath);
+ MessageBox.Show("Резервная копия успешно создана!", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
+ }
+ catch (Exception ex)
+ {
+ MessageBox.Show($"Ошибка при создании копии: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+ }
+ }
 
-            foreach (var match in _currentMatches) match.IsMatch = true;
+ private void RestoreDatabase(object obj)
+ {
+ string sourcePath = RequestRestorePath?.Invoke();
+ if (string.IsNullOrEmpty(sourcePath)) return;
+ var result = MessageBox.Show("ВНИМАНИЕ! Текущая база будет заменена.\nПродолжить восстановление?",
+ "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+ if (result != MessageBoxResult.Yes) return;
 
-            _currentMatchIndex = _currentMatches.Any() ? 0 : -1;
-            if (_currentMatchIndex == 0) SelectAndScrollToCurrentMatch();
+ try
+ {
+ _dataService.RestoreDatabase(sourcePath);
+ MessageBox.Show("База данных успешно восстановлена!", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
+ LoadData();
+ }
+ catch (Exception ex)
+ {
+ MessageBox.Show($"Ошибка при восстановлении: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+ }
+ }
 
-            UpdateMatchInfo();
-        }
+ #endregion
 
-        private void NavigateToNextMatch(object obj)
-        {
-            if (!_currentMatches.Any()) return;
-            _currentMatchIndex = (_currentMatchIndex + 1) % _currentMatches.Count;
-            SelectAndScrollToCurrentMatch();
-            UpdateMatchInfo();
-        }
+ #region INotifyPropertyChanged
 
-        private void NavigateToPreviousMatch(object obj)
-        {
-            if (!_currentMatches.Any()) return;
-            _currentMatchIndex = (_currentMatchIndex - 1 + _currentMatches.Count) % _currentMatches.Count;
-            SelectAndScrollToCurrentMatch();
-            UpdateMatchInfo();
-        }
-
-        private void SelectAndScrollToCurrentMatch()
-        {
-            SelectedRecipient = _currentMatches[_currentMatchIndex];
-            ScrollToRecipientRequested?.Invoke(SelectedRecipient);
-        }
-
-        private void CloseSearch(object obj)
-        {
-            IsSearchVisible = false;
-            SearchText = ""; // Присвоение пустой строки автоматически вызовет PerformSearch() и сбросит результаты
-        }
-
-        private void UpdateMatchInfo()
-        {
-            if (!_currentMatches.Any())
-            {
-                MatchInfo = string.IsNullOrWhiteSpace(SearchText) ? "" : "Нет совпадений";
-            }
-            else
-            {
-                MatchInfo = $"{_currentMatchIndex + 1} из {_currentMatches.Count}";
-            }
-        }
-
-        #endregion
-
-        #region Помощники для перестановки в списке
-
-        private bool CanMoveUp()
-        {
-            if (SelectedRecipient == null || RecipientsCollection == null) return false;
-            int currentIndex = RecipientsCollection.IndexOf(SelectedRecipient);
-            return currentIndex > 0; // Можно двигаться вверх, если это не первый элемент
-        }
-
-        private void MoveUp(object obj)
-        {
-            if (!CanMoveUp()) return;
-            int currentIndex = RecipientsCollection.IndexOf(SelectedRecipient);
-            RecipientsCollection.Move(currentIndex, currentIndex - 1);
-        }
-
-        private bool CanMoveDown()
-        {
-            if (SelectedRecipient == null || RecipientsCollection == null) return false;
-            int currentIndex = RecipientsCollection.IndexOf(SelectedRecipient);
-            return currentIndex < RecipientsCollection.Count - 1; // Можно двигаться вниз, если это не последний
-        }
-
-        private void MoveDown(object obj)
-        {
-            if (!CanMoveDown()) return;
-            int currentIndex = RecipientsCollection.IndexOf(SelectedRecipient);
-            RecipientsCollection.Move(currentIndex, currentIndex + 1);
-        }
-
-        #endregion
-
-        #region INotifyPropertyChanged
-
-        public event PropertyChangedEventHandler PropertyChanged;
-        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
-
-        #endregion
-    }
+ public event PropertyChangedEventHandler PropertyChanged;
+ protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
+ => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+ #endregion
+ }
 }

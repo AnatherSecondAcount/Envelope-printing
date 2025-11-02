@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using System.Runtime.InteropServices; // PInvoke
 using System.Windows.Interop; // Imaging
+using System.Windows.Media; // ImageSource
 
 namespace Envelope_printing
 {
@@ -16,12 +17,32 @@ namespace Envelope_printing
         public EditRecipientView()
         {
             InitializeComponent();
-            Loaded += (_, __) => ApplySystemIcon();
-            ContentRendered += (_, __) => ApplySystemIcon();
-            DataContextChanged += (_, __) => ApplySystemIcon();
+            Loaded += (_, __) => ApplyIcon();
+            ContentRendered += (_, __) => ApplyIcon();
+            DataContextChanged += (_, __) => ApplyIcon();
         }
 
-        private void ApplySystemIcon()
+        private void ApplyIcon()
+        {
+            // try stock shell icon first
+            if (!TryApplySystemIcon())
+            {
+                // fallback to vector DrawingImage from resources
+                try
+                {
+                    var key = (this.Title ?? string.Empty).IndexOf("Добав", StringComparison.OrdinalIgnoreCase) >=0
+                        ? "WindowIcon.AddRecipient"
+                        : ((this.Title ?? string.Empty).IndexOf("Редакт", StringComparison.OrdinalIgnoreCase) >=0 ? "WindowIcon.EditRecipient" : null);
+                    if (key != null && Application.Current?.Resources[key] is ImageSource img)
+                    {
+                        this.Icon = img;
+                    }
+                }
+                catch { }
+            }
+        }
+
+        private bool TryApplySystemIcon()
         {
             try
             {
@@ -36,21 +57,20 @@ namespace Envelope_printing
                     src.Freeze();
                     this.Icon = src;
                     DestroyIcon(hIcon);
+                    return true;
                 }
             }
             catch { }
+            return false;
         }
 
+        // P/Invoke helpers
         private static IntPtr GetStockIconHandle(SHSTOCKICONID id)
         {
             var info = new SHSTOCKICONINFO();
             info.cbSize = (uint)Marshal.SizeOf(typeof(SHSTOCKICONINFO));
             int hr = SHGetStockIconInfo(id, SHGSI.SHGSI_ICON | SHGSI.SHGSI_SMALLICON, ref info);
-            if (hr ==0)
-            {
-                return info.hIcon;
-            }
-            return IntPtr.Zero;
+            return hr ==0 ? info.hIcon : IntPtr.Zero;
         }
 
         [DllImport("Shell32.dll", SetLastError = false)]

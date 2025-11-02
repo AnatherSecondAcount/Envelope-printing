@@ -56,6 +56,10 @@
  <Style x:Key="FormField" TargetType="Control">
  <Setter Property="Margin" Value="8,0,0,0"/>
  <Setter Property="VerticalContentAlignment" Value="Center"/>
+ <!-- Unify look with printer ComboBox -->
+ <Setter Property="Height" Value="32"/>
+ <Setter Property="HorizontalContentAlignment" Value="Left"/>
+ <Setter Property="Padding" Value="8,0,8,0"/>
  </Style>
 
  <!-- Window/app background helper -->
@@ -168,7 +172,89 @@
  <Setter Property="BorderThickness" Value="1"/>
  <Setter Property="Background" Value="{DynamicResource FieldBackgroundBrush}"/>
  <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
- <Setter Property="MinHeight" Value="28"/>
+ <!-- Match the printer list visuals globally -->
+ <Setter Property="MinHeight" Value="32"/>
+ <Setter Property="HorizontalContentAlignment" Value="Left"/>
+ <Setter Property="VerticalContentAlignment" Value="Center"/>
+ <Setter Property="Padding" Value="8,0,8,0"/>
+ </Style>
+
+ <!-- DataGrid themed styles -->
+ <Style x:Key="DataGridColumnHeaderStyle" TargetType="{x:Type DataGridColumnHeader}">
+ <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
+ <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+ <Setter Property="BorderBrush" Value="{DynamicResource FieldBorderBrush}"/>
+ <Setter Property="BorderThickness" Value="0,0,0,1"/>
+ <Setter Property="FontWeight" Value="SemiBold"/>
+ <Setter Property="HorizontalContentAlignment" Value="Left"/>
+ <Setter Property="Padding" Value="8,0,8,0"/>
+ <Setter Property="Height" Value="32"/>
+ <Setter Property="Template">
+ <Setter.Value>
+ <ControlTemplate TargetType="DataGridColumnHeader">
+ <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+ <Grid>
+ <Grid.ColumnDefinitions>
+ <ColumnDefinition Width="*"/>
+ <ColumnDefinition Width="Auto"/>
+ </Grid.ColumnDefinitions>
+ <ContentPresenter Grid.Column="0" Margin="8,0,4,0" VerticalAlignment="Center"/>
+ <Grid Grid.Column="1" Margin="4,0,8,0" VerticalAlignment="Center">
+ <!-- Up triangle -->
+ <Path x:Name="AscGlyph" Width="10" Height="6" Fill="{DynamicResource TextPrimaryBrush}" Stretch="Fill" Visibility="Collapsed"
+ Data="M0,6 L5,0 L10,6 Z"/>
+ <!-- Down triangle -->
+ <Path x:Name="DescGlyph" Width="10" Height="6" Fill="{DynamicResource TextPrimaryBrush}" Stretch="Fill" Visibility="Collapsed"
+ Data="M0,0 L5,6 L10,0 Z"/>
+ </Grid>
+ </Grid>
+ </Border>
+ <ControlTemplate.Triggers>
+ <Trigger Property="SortDirection" Value="Ascending">
+ <Setter TargetName="AscGlyph" Property="Visibility" Value="Visible"/>
+ <Setter TargetName="DescGlyph" Property="Visibility" Value="Collapsed"/>
+ </Trigger>
+ <Trigger Property="SortDirection" Value="Descending">
+ <Setter TargetName="AscGlyph" Property="Visibility" Value="Collapsed"/>
+ <Setter TargetName="DescGlyph" Property="Visibility" Value="Visible"/>
+ </Trigger>
+ <Trigger Property="SortDirection" Value="{x:Null}">
+ <Setter TargetName="AscGlyph" Property="Visibility" Value="Collapsed"/>
+ <Setter TargetName="DescGlyph" Property="Visibility" Value="Collapsed"/>
+ </Trigger>
+ <Trigger Property="IsMouseOver" Value="True">
+ <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+ </Trigger>
+ </ControlTemplate.Triggers>
+ </ControlTemplate>
+ </Setter.Value>
+ </Setter>
+ </Style>
+
+ <Style x:Key="DataGridCellStyle" TargetType="{x:Type DataGridCell}">
+ <Setter Property="BorderThickness" Value="0"/>
+ <Setter Property="Padding" Value="6,2,6,2"/>
+ <Setter Property="HorizontalContentAlignment" Value="Left"/>
+ <Setter Property="VerticalContentAlignment" Value="Center"/>
+ </Style>
+
+ <Style TargetType="{x:Type DataGrid}">
+ <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+ <Setter Property="BorderBrush" Value="{DynamicResource FieldBorderBrush}"/>
+ <Setter Property="BorderThickness" Value="1"/>
+ <Setter Property="RowHeight" Value="32"/>
+ <Setter Property="HeadersVisibility" Value="Column"/>
+ <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+ <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource FieldBorderBrush}"/>
+ <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource FieldBorderBrush}"/>
+ <Setter Property="AlternationCount" Value="0"/>
+ <Setter Property="RowBackground" Value="{DynamicResource SurfaceBrush}"/>
+ <Setter Property="AlternatingRowBackground" Value="{DynamicResource SurfaceBrush}"/>
+ <Setter Property="SnapsToDevicePixels" Value="True"/>
+ <Setter Property="EnableRowVirtualization" Value="True"/>
+ <Setter Property="SelectionUnit" Value="FullRow"/>
+ <Setter Property="ColumnHeaderStyle" Value="{StaticResource DataGridColumnHeaderStyle}"/>
+ <Setter Property="CellStyle" Value="{StaticResource DataGridCellStyle}"/>
  </Style>
 
  <!-- Panel border (primary surface) -->

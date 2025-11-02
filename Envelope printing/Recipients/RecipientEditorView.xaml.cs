@@ -16,6 +16,19 @@ namespace Envelope_printing
             DataContextChanged += RecipientEditorView_DataContextChanged;
         }
 
+        // Intercept Delete key to trigger VM deletion
+        private void RecipientsGrid_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Delete)
+            {
+                if (DataContext is RecipientEditorViewModel vm && vm.DeleteCommand?.CanExecute(null) == true)
+                {
+                    vm.DeleteCommand.Execute(null);
+                    e.Handled = true;
+                }
+            }
+        }
+
         private void RecipientEditorView_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
         {
             if (e.OldValue is RecipientEditorViewModel oldVm)
@@ -36,6 +49,7 @@ namespace Envelope_printing
             vm.RequestExportExcelPath += OnRequestExportExcelPath;
             vm.RequestImportExcelPath += OnRequestImportExcelPath;
             vm.ScrollToRecipientRequested += OnScrollToRecipientRequested;
+            vm.EnsureGridFocusRequested += OnEnsureGridFocusRequested;
         }
         private void UnsubscribeVm(RecipientEditorViewModel vm)
         {
@@ -45,6 +59,7 @@ namespace Envelope_printing
             vm.RequestExportExcelPath -= OnRequestExportExcelPath;
             vm.RequestImportExcelPath -= OnRequestImportExcelPath;
             vm.ScrollToRecipientRequested -= OnScrollToRecipientRequested;
+            vm.EnsureGridFocusRequested -= OnEnsureGridFocusRequested;
         }
 
         // Диалоги добавления/редактирования
@@ -56,6 +71,16 @@ namespace Envelope_printing
                 Owner = Window.GetWindow(this)
             };
             return dialog.ShowDialog();
+        }
+
+        private void OnEnsureGridFocusRequested()
+        {
+            // Ставим фокус на сам DataGrid.
+            // Это активирует визуальное выделение (как при реальном фокусе).
+            if (RecipientsGrid != null)
+            {
+                RecipientsGrid.Focus();
+            }
         }
 
         // Путь для бэкапа

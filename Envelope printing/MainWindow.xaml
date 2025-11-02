@@ -30,9 +30,18 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type ButtonBase}">
-                        <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="4">
-                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
-                        </Border>
+                        <Grid>
+                            <!-- accent bar for active item -->
+                            <Border x:Name="AccentBar" Width="3" HorizontalAlignment="Left" Background="{DynamicResource AccentBrush}" Visibility="Collapsed"/>
+                            <Border x:Name="Bg" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="4" Margin="3,0,0,0">
+                                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource ButtonHoverBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -68,6 +77,103 @@
                 <DataTrigger Binding="{Binding DataContext.IsLeftPanelExpanded, RelativeSource={RelativeSource AncestorType=Window}}" Value="False">
                     <Setter Property="Width" Value="42"/>
                     <Setter Property="HorizontalAlignment" Value="Center"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Styles to highlight active section -->
+        <Style x:Key="HomeNavButtonStyle" TargetType="Button" BasedOn="{StaticResource NavButtonStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding CurrentSection}" Value="Home">
+                    <Setter Property="Background" Value="{DynamicResource ButtonPressedBrush}"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                                <Grid>
+                                    <Border Width="3" HorizontalAlignment="Left" Background="{DynamicResource AccentBrush}"/>
+                                    <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="4" Margin="3,0,0,0">
+                                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
+                                    </Border>
+                                </Grid>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="PrintNavButtonStyle" TargetType="Button" BasedOn="{StaticResource NavButtonStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding CurrentSection}" Value="Print">
+                    <Setter Property="Background" Value="{DynamicResource ButtonPressedBrush}"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                                <Grid>
+                                    <Border Width="3" HorizontalAlignment="Left" Background="{DynamicResource AccentBrush}"/>
+                                    <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="4" Margin="3,0,0,0">
+                                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
+                                    </Border>
+                                </Grid>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="RecipientsNavButtonStyle" TargetType="Button" BasedOn="{StaticResource NavButtonStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding CurrentSection}" Value="Recipients">
+                    <Setter Property="Background" Value="{DynamicResource ButtonPressedBrush}"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                                <Grid>
+                                    <Border Width="3" HorizontalAlignment="Left" Background="{DynamicResource AccentBrush}"/>
+                                    <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="4" Margin="3,0,0,0">
+                                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
+                                    </Border>
+                                </Grid>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="DesignerNavButtonStyle" TargetType="Button" BasedOn="{StaticResource NavButtonStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding CurrentSection}" Value="Designer">
+                    <Setter Property="Background" Value="{DynamicResource ButtonPressedBrush}"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                                <Grid>
+                                    <Border Width="3" HorizontalAlignment="Left" Background="{DynamicResource AccentBrush}"/>
+                                    <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="4" Margin="3,0,0,0">
+                                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
+                                    </Border>
+                                </Grid>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="SettingsNavButtonStyle" TargetType="Button" BasedOn="{StaticResource NavButtonStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding CurrentSection}" Value="Settings">
+                    <Setter Property="Background" Value="{DynamicResource ButtonPressedBrush}"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                                <Grid>
+                                    <Border Width="3" HorizontalAlignment="Left" Background="{DynamicResource AccentBrush}"/>
+                                    <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="4" Margin="3,0,0,0">
+                                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
+                                    </Border>
+                                </Grid>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -132,7 +238,7 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0" Margin="4">
-                        <Button Style="{StaticResource NavButtonStyle}" Command="{Binding ShowHomeCommand}" ToolTip="На главную">
+                        <Button Style="{StaticResource HomeNavButtonStyle}" Command="{Binding ShowHomeCommand}" ToolTip="На главную">
                             <Grid Style="{StaticResource CollapsedNavGridStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="42"/>
@@ -142,7 +248,7 @@
                                 <TextBlock Grid.Column="1" Text="На главную" Style="{StaticResource NavButtonTextStyle}"/>
                             </Grid>
                         </Button>
-                        <Button Style="{StaticResource NavButtonStyle}" Command="{Binding ShowPrintPreviewCommand}" FontWeight="Bold" ToolTip="Печать конвертов">
+                        <Button Style="{StaticResource PrintNavButtonStyle}" Command="{Binding ShowPrintPreviewCommand}" FontWeight="Bold" ToolTip="Печать конвертов">
                             <Grid Style="{StaticResource CollapsedNavGridStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="42"/>
@@ -156,7 +262,7 @@
                     </StackPanel>
 
                     <StackPanel Grid.Row="2" VerticalAlignment="Bottom" Margin="4">
-                        <Button Style="{StaticResource NavButtonStyle}" Command="{Binding ShowRecipientEditorCommand}" ToolTip="База получателей">
+                        <Button Style="{StaticResource RecipientsNavButtonStyle}" Command="{Binding ShowRecipientEditorCommand}" ToolTip="База получателей">
                             <Grid Style="{StaticResource CollapsedNavGridStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="42"/>
@@ -166,7 +272,7 @@
                                 <TextBlock Grid.Column="1" Text="База получателей" Style="{StaticResource NavButtonTextStyle}"/>
                             </Grid>
                         </Button>
-                        <Button Style="{StaticResource NavButtonStyle}" Command="{Binding ShowTemplateDesignerCommand}" ToolTip="Дизайнер">
+                        <Button Style="{StaticResource DesignerNavButtonStyle}" Command="{Binding ShowTemplateDesignerCommand}" ToolTip="Дизайнер">
                             <Grid Style="{StaticResource CollapsedNavGridStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="42"/>
@@ -176,7 +282,7 @@
                                 <TextBlock Grid.Column="1" Text="Дизайнер" Style="{StaticResource NavButtonTextStyle}"/>
                             </Grid>
                         </Button>
-                        <Button Style="{StaticResource NavButtonStyle}" Command="{Binding ShowSettingsCommand}" ToolTip="Настройки">
+                        <Button Style="{StaticResource SettingsNavButtonStyle}" Command="{Binding ShowSettingsCommand}" ToolTip="Настройки">
                             <Grid Style="{StaticResource CollapsedNavGridStyle}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="42"/>

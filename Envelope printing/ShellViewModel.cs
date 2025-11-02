@@ -13,6 +13,15 @@ using System.Windows.Controls;
 
 namespace Envelope_printing
 {
+    public enum AppSection
+    {
+        Home,
+        Print,
+        Recipients,
+        Designer,
+        Settings
+    }
+
     public class ShellViewModel : INotifyPropertyChanged
     {
         private object _currentView;
@@ -56,6 +65,13 @@ namespace Envelope_printing
             set { _currentView = value; OnPropertyChanged(); }
         }
 
+        private AppSection _currentSection;
+        public AppSection CurrentSection
+        {
+            get => _currentSection;
+            set { if (_currentSection == value) return; _currentSection = value; OnPropertyChanged(); }
+        }
+
         private bool _hasUpdateAvailable;
         public bool HasUpdateAvailable
         {
@@ -81,14 +97,15 @@ namespace Envelope_printing
             SettingsView = new SettingsView();
 
             ToggleLeftPanelVisibilityCommand = new RelayCommand(p => IsLeftPanelVisible = !IsLeftPanelVisible);
-            ShowHomeCommand = new RelayCommand(p => NavigateTo(HomeVM));
-            ShowRecipientEditorCommand = new RelayCommand(p => ShowRecipientEditor());
-            ShowTemplateDesignerCommand = new RelayCommand(p => ShowTemplateDesigner());
-            ShowPrintPreviewCommand = new RelayCommand(p => ShowPrintPreview());
-            ShowSettingsCommand = new RelayCommand(p => { NavigateTo(SettingsView); HasUpdateAvailable = false; });
+            ShowHomeCommand = new RelayCommand(p => { NavigateTo(HomeVM); CurrentSection = AppSection.Home; });
+            ShowRecipientEditorCommand = new RelayCommand(p => { ShowRecipientEditor(); CurrentSection = AppSection.Recipients; });
+            ShowTemplateDesignerCommand = new RelayCommand(p => { ShowTemplateDesigner(); CurrentSection = AppSection.Designer; });
+            ShowPrintPreviewCommand = new RelayCommand(p => { ShowPrintPreview(); CurrentSection = AppSection.Print; });
+            ShowSettingsCommand = new RelayCommand(p => { NavigateTo(SettingsView); HasUpdateAvailable = false; CurrentSection = AppSection.Settings; });
             ToggleLeftPanelCommand = new RelayCommand(p => IsLeftPanelExpanded = !IsLeftPanelExpanded);
 
             CurrentView = HomeVM;
+            CurrentSection = AppSection.Home;
 
             // Запускаем отложенную проверку обновлений
             _ = StartUpdateCheckDelayed();

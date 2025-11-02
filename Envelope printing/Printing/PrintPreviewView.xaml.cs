@@ -88,6 +88,12 @@ namespace Envelope_printing
                     double r = Math.Max(0, pageW - (oW + eW)); double b = Math.Max(0, pageH - (oH + eH));
                     VM.MarginLeftMm = Units.DiuToMm(oW); VM.MarginTopMm = Units.DiuToMm(oH); VM.MarginRightMm = Units.DiuToMm(r); VM.MarginBottomMm = Units.DiuToMm(b);
                 }
+
+                // Reflect InputBin and MediaType picked in the system dialog back to VM selections
+                if (ticket?.InputBin != null)
+                    VM.SelectedInputBin = ticket.InputBin;
+                if (ticket?.PageMediaType != null)
+                    VM.SelectedMediaType = ticket.PageMediaType;
             }
             catch { }
         }
@@ -131,6 +137,12 @@ namespace Envelope_printing
                 if (VM.SelectedPageSize?.Media?.PageMediaSizeName != null) baseTicket.PageMediaSize = new PageMediaSize(VM.SelectedPageSize.Media.PageMediaSizeName.Value);
                 else baseTicket.PageMediaSize = new PageMediaSize(Units.MmToDiu(targetWmm), Units.MmToDiu(targetHmm));
                 baseTicket.PageOrientation = landscape ? PageOrientation.Landscape : PageOrientation.Portrait;
+                // NEW: propagate user selections for tray and media type to the ticket
+                if (VM.SelectedInputBin != null)
+                    baseTicket.InputBin = VM.SelectedInputBin.Value;
+                if (VM.SelectedMediaType != null)
+                    baseTicket.PageMediaType = VM.SelectedMediaType.Value;
+
                 var validated = queue.MergeAndValidatePrintTicket(queue.UserPrintTicket ?? queue.DefaultPrintTicket, baseTicket).ValidatedPrintTicket; queue.UserPrintTicket = validated;
                 GetSheetSizeFromTicket(validated, out var sheetWmm, out var sheetHmm, out var ticketLandscape);
                 var margins = GetMarginsFromTicket(queue, validated, sheetWmm, sheetHmm, ticketLandscape);
