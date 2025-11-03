@@ -17,6 +17,7 @@ namespace Envelope_printing
         private Mutex _singleInstanceMutex;
         private SplashWindow _splash;
         private string _logFilePath;
+        private CancellationTokenSource _startupCts;
 
         protected override async void OnStartup(StartupEventArgs e)
         {
@@ -35,31 +36,68 @@ namespace Envelope_printing
             base.OnStartup(e);
             TryRegisterAppLogoResource();
 
+            _startupCts = new CancellationTokenSource();
+
             try
             {
                 // Show splash immediately
                 _splash = new SplashWindow();
+                _splash.Closing += (_, __) => { try { _startupCts.Cancel(); } catch { } };
                 _splash.Show();
 
-                // Do heavy initialization on background thread (with own guard)
-                await Task.Run(() => HeavyInitializeSafe());
+                // Do heavy init strictly on background thread; support cancellation when user closes splash
+                await Task.Run(() => HeavyInitializeSafe(_startupCts.Token));
+                if (_startupCts.IsCancellationRequested) { Shutdown(); return; }
 
-                // Create and show main window on UI thread
+                // Create main window only after init completes
                 var main = new MainWindow
                 {
                     Width = 900,
                     Height = 600
                 };
+                // Eagerly set VM; other screens remain lazy inside ShellViewModel
+                main.DataContext = new ShellViewModel();
+                MainWindow = main;
                 main.Show();
             }
             catch (Exception ex)
             {
                 ShowFatalError("Ошибка при запуске приложения", ex);
-                // do not rethrow to avoid crash without dialog
             }
             finally
             {
                 try { _splash?.Close(); } catch { }
+            }
+        }
+
+        protected override void OnExit(ExitEventArgs e)
+        {
+            try
+            {
+                _startupCts?.Cancel();
+                RunUpdateOnExitIfRequested();
+            }
+            catch { }
+            _singleInstanceMutex?.ReleaseMutex();
+            _singleInstanceMutex?.Dispose();
+            base.OnExit(e);
+        }
+
+        private void HeavyInitializeSafe(CancellationToken ct)
+        {
+            try
+            {
+                if (ct.IsCancellationRequested) return;
+                var ds = new EnvelopePrinter.Core.DataService();
+                if (ct.IsCancellationRequested) return;
+                // Warm-up simple queries (fast); if cancelled, bail out
+                ds.GetAllTemplates();
+                if (ct.IsCancellationRequested) return;
+                ds.GetAllRecipients();
+            }
+            catch (Exception ex)
+            {
+                LogException("Ошибка инициализации", ex);
             }
         }
 
@@ -123,33 +161,6 @@ namespace Envelope_printing
                 File.AppendAllText(_logFilePath, sb.ToString(), Encoding.UTF8);
             }
             catch { }
-        }
-
-        protected override void OnExit(ExitEventArgs e)
-        {
-            try
-            {
-                RunUpdateOnExitIfRequested();
-            }
-            catch { }
-            _singleInstanceMutex?.ReleaseMutex();
-            _singleInstanceMutex?.Dispose();
-            base.OnExit(e);
-        }
-
-        private void HeavyInitializeSafe()
-        {
-            try
-            {
-                // Place any long-running startup tasks here. Example: warm-up DB services.
-                var ds = new EnvelopePrinter.Core.DataService();
-                ds.GetAllTemplates();
-                ds.GetAllRecipients();
-            }
-            catch (Exception ex)
-            {
-                LogException("Ошибка инициализации", ex);
-            }
         }
 
         private void TryRegisterAppLogoResource()

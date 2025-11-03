@@ -181,8 +181,8 @@
 
     <!-- Root host contains Splash layer and App layer -->
     <Grid Background="{DynamicResource AppBackground}">
-        <!-- Splash overlay -->
-        <Grid x:Name="SplashGrid" Background="{DynamicResource AppBackground}">
+        <!-- Splash overlay disabled: keep collapsed to avoid double-loading effect -->
+        <Grid x:Name="SplashGrid" Background="{DynamicResource AppBackground}" Visibility="Collapsed">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
@@ -193,28 +193,11 @@
                 <Image Width="72" Height="72" Margin="0,0,0,10" Source="{DynamicResource AppLogo}" Stretch="Uniform"/>
                 <TextBlock Text="Печать конвертов" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center"/>
                 <TextBlock Text="Загрузка..." Margin="0,6,0,12" HorizontalAlignment="Center"/>
-                <!-- Simple spinner -->
-                <Grid Width="48" Height="48">
-                    <Ellipse Width="48" Height="48" Stroke="{DynamicResource AccentBrush}" StrokeThickness="4" StrokeDashArray="23" RenderTransformOrigin="0.5,0.5">
-                        <Ellipse.RenderTransform>
-                            <RotateTransform x:Name="SpinnerRotate" Angle="0"/>
-                        </Ellipse.RenderTransform>
-                    </Ellipse>
-                    <Grid.Triggers>
-                        <EventTrigger RoutedEvent="Loaded">
-                            <BeginStoryboard>
-                                <Storyboard RepeatBehavior="Forever">
-                                    <DoubleAnimation Storyboard.TargetName="SpinnerRotate" Storyboard.TargetProperty="Angle" From="0" To="360" Duration="0:0:1.2"/>
-                                </Storyboard>
-                            </BeginStoryboard>
-                        </EventTrigger>
-                    </Grid.Triggers>
-                </Grid>
             </StackPanel>
         </Grid>
 
-        <!-- App layer: original content wrapped and initially hidden -->
-        <Grid x:Name="AppRoot" Visibility="Collapsed" Background="{DynamicResource AppBackground}">
+        <!-- App layer: visible by default -->
+        <Grid x:Name="AppRoot" Visibility="Visible" Background="{DynamicResource AppBackground}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="{Binding LeftPanelWidth}"/>
                 <ColumnDefinition Width="*"/>

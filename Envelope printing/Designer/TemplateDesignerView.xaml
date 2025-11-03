@@ -646,7 +646,7 @@
  <ToggleButton.RenderTransform>
  <TranslateTransform X="-8"/>
  </ToggleButton.RenderTransform>
- <TextBlock Text="&#xE76C;"/>
+ <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE76C;"/>
  </ToggleButton>
 
  <!-- Zoom popup -->

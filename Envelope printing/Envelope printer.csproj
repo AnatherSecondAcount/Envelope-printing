@@ -53,12 +53,4 @@
     <ProjectReference Include="..\EnvelopePrinter.Core\EnvelopePrinter.Core.csproj" />
   </ItemGroup>
 
-  <!-- Ensure style dictionary is compiled as a WPF Page resource -->
-  <ItemGroup>
-    <Page Update="Styles\MinimalisticStyles.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
-  </ItemGroup>
-
 </Project>

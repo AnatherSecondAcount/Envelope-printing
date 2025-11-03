@@ -34,7 +34,7 @@
  </Border>
 
  <TextBlock Text="Шаблон" Style="{StaticResource SectionHeader}"/>
- <ComboBox Margin="6,2,6,8" ItemsSource="{Binding Templates}" SelectedItem="{Binding SelectedTemplate}" DisplayMemberPath="Name"/>
+ <ComboBox Margin="6,2,6,8" ItemsSource="{Binding Templates}" SelectedItem="{Binding SelectedTemplate}" DisplayMemberPath="Name" Style="{StaticResource FormComboBox}"/>
 
  <TextBlock Text="Принтер" Style="{StaticResource SectionHeader}"/>
  <Grid Margin="6,2,6,8">
@@ -43,7 +43,7 @@
  <ColumnDefinition Width="Auto"/>
  </Grid.ColumnDefinitions>
  <ComboBox Grid.Column="0" ItemsSource="{Binding Printers}" SelectedItem="{Binding SelectedPrinter}" DisplayMemberPath="Name"
- Height="32" Style="{StaticResource FormField}" HorizontalContentAlignment="Left" VerticalContentAlignment="Center" Padding="8,0,8,0"/>
+ Height="32" Style="{StaticResource FormComboBox}" HorizontalContentAlignment="Left" VerticalContentAlignment="Center" Padding="8,0,8,0"/>
  <Button Grid.Column="1" Style="{StaticResource FileButtonStyle}" Width="36" Height="32" Margin="8,0,0,0" ToolTip="Параметры печати…" Click="OpenPrinterSettings_Click">
  <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE713;" HorizontalAlignment="Center" VerticalAlignment="Center"/>
  </Button>
@@ -55,7 +55,7 @@
  <ColumnDefinition Width="*"/>
  </Grid.ColumnDefinitions>
  <TextBlock Text="Формат" Style="{StaticResource FormLabelText}"/>
- <ComboBox Grid.Column="1" ItemsSource="{Binding AvailablePageSizes}" SelectedItem="{Binding SelectedPageSize}" DisplayMemberPath="Display" Style="{StaticResource FormField}"
+ <ComboBox Grid.Column="1" ItemsSource="{Binding AvailablePageSizes}" SelectedItem="{Binding SelectedPageSize}" DisplayMemberPath="Display" Style="{StaticResource FormComboBox}"
  Height="32" HorizontalContentAlignment="Left" VerticalContentAlignment="Center" Padding="8,0,8,0"/>
  </Grid>
 
@@ -76,7 +76,7 @@
  <ColumnDefinition Width="*"/>
  </Grid.ColumnDefinitions>
  <TextBlock Text="Лоток" Style="{StaticResource FormLabelText}"/>
- <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableInputBins}" SelectedItem="{Binding SelectedInputBin}" Style="{StaticResource FormField}"
+ <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableInputBins}" SelectedItem="{Binding SelectedInputBin}" Style="{StaticResource FormComboBox}"
  Height="32" HorizontalContentAlignment="Left" VerticalContentAlignment="Center" Padding="8,0,8,0"/>
  </Grid>
 
@@ -97,7 +97,7 @@
  <ColumnDefinition Width="*"/>
  </Grid.ColumnDefinitions>
  <TextBlock Text="Тип бумаги" Style="{StaticResource FormLabelText}"/>
- <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableMediaTypes}" SelectedItem="{Binding SelectedMediaType}" Style="{StaticResource FormField}"
+ <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableMediaTypes}" SelectedItem="{Binding SelectedMediaType}" Style="{StaticResource FormComboBox}"
  Height="32" HorizontalContentAlignment="Left" VerticalContentAlignment="Center" Padding="8,0,8,0"/>
  </Grid>
 

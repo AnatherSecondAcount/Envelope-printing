@@ -5,7 +5,7 @@
  <Application.Resources>
  <ResourceDictionary>
  <ResourceDictionary.MergedDictionaries>
- <ResourceDictionary Source="/Styles/MinimalisticStyles.xaml"/>
+ <ResourceDictionary Source="pack://application:,,,/Styles/MinimalisticStyles.xaml"/>
  </ResourceDictionary.MergedDictionaries>
 
  <!-- Map VM to View for Home tab -->
