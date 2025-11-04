@@ -32,10 +32,24 @@ namespace Envelope_printing
         {
             InitializeComponent();
 
-            // версия из ProductVersion
-            var exe = Assembly.GetExecutingAssembly().Location;
-            var pv = FileVersionInfo.GetVersionInfo(exe).ProductVersion;
-            var displayPv = SanitizeDisplayVersion(pv) ?? (Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "-");
+            // версия из ProductVersion (безопасно для single-file)
+            string pv = null;
+            try
+            {
+                var exePath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
+                if (!string.IsNullOrWhiteSpace(exePath))
+                {
+                    pv = FileVersionInfo.GetVersionInfo(exePath).ProductVersion;
+                }
+            }
+            catch { /* ignore */ }
+            if (string.IsNullOrWhiteSpace(pv))
+            {
+                var asm = Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly();
+                pv = asm?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                   ?? asm?.GetName().Version?.ToString();
+            }
+            var displayPv = SanitizeDisplayVersion(pv) ?? "-";
             CurrentVersionText.Text = displayPv;
 
             var handler = new HttpClientHandler { AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate };

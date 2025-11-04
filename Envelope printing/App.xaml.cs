@@ -24,13 +24,23 @@ namespace Envelope_printing
             // Setup global handlers first
             RegisterGlobalExceptionHandlers();
 
-            // Single-instance guard
-            bool created;
-            _singleInstanceMutex = new Mutex(true, "EnvelopePrinter.SingleInstance", out created);
-            if (!created)
+            // Init basic logging very early
+            TryEnsureLogFile();
+            Log("Startup: begin");
+
+            // Single-instance guard (disabled while debugging or when EP_ALLOW_MULTI=1)
+            var disableGuard = Debugger.IsAttached || string.Equals(Environment.GetEnvironmentVariable("EP_ALLOW_MULTI"), "1");
+            if (!disableGuard)
             {
-                Shutdown();
-                return;
+                bool created;
+                _singleInstanceMutex = new Mutex(true, "EnvelopePrinter.SingleInstance", out created);
+                if (!created)
+                {
+                    Log("Startup: another instance detected, exiting");
+                    try { MessageBox.Show("Приложение уже запущено.", "Envelope Printer", MessageBoxButton.OK, MessageBoxImage.Information); } catch { }
+                    Shutdown();
+                    return;
+                }
             }
 
             base.OnStartup(e);
@@ -59,6 +69,7 @@ namespace Envelope_printing
                 main.DataContext = new ShellViewModel();
                 MainWindow = main;
                 main.Show();
+                Log("Startup: main window shown");
             }
             catch (Exception ex)
             {
@@ -76,6 +87,7 @@ namespace Envelope_printing
             {
                 _startupCts?.Cancel();
                 RunUpdateOnExitIfRequested();
+                Log("Exit");
             }
             catch { }
             _singleInstanceMutex?.ReleaseMutex();
@@ -332,6 +344,27 @@ exit /b0
                 WindowStyle = ProcessWindowStyle.Hidden
             };
             Process.Start(psi);
+        }
+
+        private void TryEnsureLogFile()
+        {
+            try
+            {
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                var folder = Path.Combine(appData, "EnvelopePrinter", "logs");
+                Directory.CreateDirectory(folder);
+                _logFilePath ??= Path.Combine(folder, $"app-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+            }
+            catch { }
+        }
+        private void Log(string line)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(_logFilePath)) return;
+                File.AppendAllText(_logFilePath, $"[{DateTime.Now:HH:mm:ss}] {line}{Environment.NewLine}", Encoding.UTF8);
+            }
+            catch { }
         }
 
         private sealed class UpdateOnExitInfo
