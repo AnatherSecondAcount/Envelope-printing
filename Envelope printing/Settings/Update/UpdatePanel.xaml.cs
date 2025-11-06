@@ -27,41 +27,59 @@ namespace Envelope_printing
         private string _extractedDir;
         private string _releaseBody;
         private readonly HttpClient _http;
+        private bool _versionInitialized;
 
         public UpdatePanel()
         {
             InitializeComponent();
-
-            // версия из ProductVersion (безопасно для single-file)
-            string pv = null;
-            try
-            {
-                var exePath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
-                if (!string.IsNullOrWhiteSpace(exePath))
-                {
-                    pv = FileVersionInfo.GetVersionInfo(exePath).ProductVersion;
-                }
-            }
-            catch { /* ignore */ }
-            if (string.IsNullOrWhiteSpace(pv))
-            {
-                var asm = Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly();
-                pv = asm?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-                   ?? asm?.GetName().Version?.ToString();
-            }
-            var displayPv = SanitizeDisplayVersion(pv) ?? "-";
-            CurrentVersionText.Text = displayPv;
+            this.Loaded += UpdatePanel_Loaded; // defer heavy / fragile logic
 
             var handler = new HttpClientHandler { AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate };
             _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
             _http.DefaultRequestHeaders.Accept.Clear();
             _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-            _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("EnvelopePrinter", CurrentVersionText.Text));
+            _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("EnvelopePrinter", "0")); // real version set after init
             _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("GitHubCopilot", "1.0"));
             _http.DefaultRequestHeaders.TryAddWithoutValidation("X-GitHub-Api-Version", "2022-11-28");
             var token = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
             if (!string.IsNullOrWhiteSpace(token))
                 _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
+
+        private void UpdatePanel_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (_versionInitialized) return;
+            _versionInitialized = true;
+            try
+            {
+                string? pv = null;
+                string? exePath = Environment.ProcessPath;
+                if (string.IsNullOrWhiteSpace(exePath)) exePath = Process.GetCurrentProcess().MainModule?.FileName;
+                if (!string.IsNullOrWhiteSpace(exePath) && File.Exists(exePath))
+                {
+                    try { pv = FileVersionInfo.GetVersionInfo(exePath).ProductVersion; } catch { }
+                }
+                if (string.IsNullOrWhiteSpace(pv))
+                {
+                    var asm = Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly();
+                    pv = asm?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                       ?? asm?.GetName().Version?.ToString();
+                }
+                var displayPv = SanitizeDisplayVersion(pv) ?? "-";
+                CurrentVersionText.Text = displayPv;
+                // update UA header version value
+                try
+                {
+                    _http.DefaultRequestHeaders.UserAgent.Remove(_http.DefaultRequestHeaders.UserAgent.First(h => h.Product.Name == "EnvelopePrinter"));
+                    _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("EnvelopePrinter", displayPv));
+                }
+                catch { }
+            }
+            catch { CurrentVersionText.Text = "-"; }
+            finally
+            {
+                this.Loaded -= UpdatePanel_Loaded;
+            }
         }
 
         // публичный запуск проверки
