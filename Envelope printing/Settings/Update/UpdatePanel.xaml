@@ -6,73 +6,121 @@
  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
  mc:Ignorable="d"
  d:DesignHeight="380" d:DesignWidth="460">
- <Border Padding="12" Style="{StaticResource PanelBorder}">
- <StackPanel>
- 
- <TextBlock Text="Обновления" FontWeight="SemiBold" FontSize="16"/>
+    <Border Padding="12" Style="{StaticResource PanelBorder}">
+        <StackPanel>
+            <TextBlock Text="Обновления" FontWeight="SemiBold" FontSize="16"/>
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                <TextBlock Text="Текущая версия:"/>
+                <TextBlock x:Name="CurrentVersionText" FontWeight="Bold" Margin="6,0,0,0"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                <Button x:Name="CheckButton" Content="Проверить" Width="110" Click="CheckButton_Click"/>
+            </StackPanel>
+            <ProgressBar x:Name="DownloadProgress" Margin="0,10,0,0" Height="10" Minimum="0" Maximum="100" Visibility="Collapsed"/>
+            <TextBlock x:Name="StatusText" Margin="0,6,0,0" TextWrapping="Wrap"/>
 
- <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
- <TextBlock Text="Текущая версия:"/>
- <TextBlock x:Name="CurrentVersionText" FontWeight="Bold" Margin="6,0,0,0"/>
- </StackPanel>
+            <!-- Card-like update info on surface (white), not grey -->
+            <Border x:Name="UpdateInfoPanel" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource FieldBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,10,0,0" Opacity="0" Visibility="Collapsed">
+                <Border.Effect>
+                    <DropShadowEffect ShadowDepth="2" Color="Gray" Opacity="0.15" BlurRadius="8"/>
+                </Border.Effect>
+                <StackPanel>
+                    <Grid Height="160" ClipToBounds="True">
+                        <Border CornerRadius="6">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#EAF2FF" Offset="0"/>
+                                    <GradientStop Color="#DDE8FF" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+                        <Image x:Name="HeroImage" Stretch="UniformToFill" Opacity="0.12" Visibility="Collapsed"/>
+                        <StackPanel VerticalAlignment="Center" Margin="16">
+                            <TextBlock x:Name="HeadlineText" Text="Доступна новая версия" FontSize="26" FontWeight="Bold"/>
+                            <TextBlock x:Name="HeadlineVersionText" Text="" FontSize="18" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Grid>
 
- <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
- <Button x:Name="CheckButton" Content="Проверить" Width="110" Click="CheckButton_Click"/>
- </StackPanel>
+                    <!-- Expander without default arrow -->
+                    <Expander x:Name="ChangelogExpander" IsExpanded="False" Margin="0,10,0,0">
+                        <Expander.Style>
+                            <Style TargetType="Expander">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Expander">
+                                            <Border Background="Transparent">
+                                                <DockPanel>
+                                                    <ToggleButton x:Name="HeaderSite"
+ Content="{TemplateBinding Header}"
+ ContentTemplate="{TemplateBinding HeaderTemplate}"
+ ContentTemplateSelector="{TemplateBinding HeaderTemplateSelector}"
+ IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}"
+ DockPanel.Dock="Top" Background="Transparent" BorderThickness="0" Focusable="False">
+                                                        <ToggleButton.Template>
+                                                            <ControlTemplate TargetType="ToggleButton">
+                                                                <Border Background="Transparent" BorderThickness="0">
+                                                                    <ContentPresenter/>
+                                                                </Border>
+                                                            </ControlTemplate>
+                                                        </ToggleButton.Template>
+                                                    </ToggleButton>
+                                                    <ContentPresenter x:Name="ExpandSite" Visibility="Collapsed" ContentSource="Content" Margin="0,6,0,0"/>
+                                                </DockPanel>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsExpanded" Value="True">
+                                                    <Setter TargetName="ExpandSite" Property="Visibility" Value="Visible"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </Expander.Style>
+                        <Expander.Resources>
+                            <Style x:Key="ChevronStyle" TargetType="TextBlock">
+                                <Setter Property="Text" Value="&#xE70D;"/>
+                                <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsExpanded, RelativeSource={RelativeSource AncestorType=Expander}}" Value="True">
+                                        <Setter Property="Text" Value="&#xE70E;"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Expander.Resources>
+                        <Expander.Header>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Width="18" Height="18" CornerRadius="9" BorderBrush="{DynamicResource FieldBorderBrush}" BorderThickness="1" Background="{DynamicResource FieldBackgroundBrush}" VerticalAlignment="Center" Margin="0,0,6,0">
+                                    <TextBlock Style="{StaticResource ChevronStyle}" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10"/>
+                                </Border>
+                                <TextBlock Grid.Column="1" Text="Что нового" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Expander.Header>
+                        <Border Background="{DynamicResource FieldBackgroundBrush}" BorderBrush="{DynamicResource FieldBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="8">
+                            <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto">
+                                <TextBlock x:Name="ChangelogText" TextWrapping="Wrap" FontSize="13" LineStackingStrategy="BlockLineHeight" LineHeight="20"/>
+                            </ScrollViewer>
+                        </Border>
+                    </Expander>
 
- <ProgressBar x:Name="DownloadProgress" Margin="0,10,0,0" Height="10" Minimum="0" Maximum="100" Visibility="Collapsed"/>
- <TextBlock x:Name="StatusText" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                    <StackPanel Margin="0,10,0,0">
+                        <Button x:Name="DownloadButton" Content="Скачать" Width="160" Click="DownloadButton_Click" Visibility="Collapsed"/>
+                        <StackPanel x:Name="PostDownloadButtons" Orientation="Horizontal" Margin="0,10,0,0" Visibility="Collapsed">
+                            <Button x:Name="BtnUpdateNow" Content="Закрыть и обновить" Width="160" Click="BtnUpdateNow_Click"/>
+                            <Button x:Name="BtnUpdateAndReopen" Content="Обновить и открыть" Width="160" Margin="8,0,0,0" Click="BtnUpdateAndReopen_Click"/>
+                            <Button x:Name="BtnUpdateOnExit" Content="Обновить при выходе" Width="170" Margin="8,0,0,0" Click="BtnUpdateOnExit_Click"/>
+                            <Button x:Name="BtnSkip" Content="Пропустить" Width="110" Margin="8,0,0,0" Click="BtnSkip_Click"/>
+                        </StackPanel>
+                    </StackPanel>
 
- <!-- Инфо-блок: баннер с текстом, версия, изменения, кнопки -->
- <Border x:Name="UpdateInfoPanel" Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource FieldBorderBrush}" BorderThickness="1" CornerRadius="6"
- Padding="10" Margin="0,10,0,0" Opacity="0" Visibility="Collapsed">
- <StackPanel>
- <!-- Баннер с сообщением и версией -->
- <Grid Height="160" ClipToBounds="True">
- <Border CornerRadius="6">
- <Border.Background>
- <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
- <GradientStop Color="#EAF2FF" Offset="0"/>
- <GradientStop Color="#DDE8FF" Offset="1"/>
- </LinearGradientBrush>
- </Border.Background>
- </Border>
- <!-- Опциональная картинка-подложка -->
- <Image x:Name="HeroImage" Stretch="UniformToFill" Opacity="0.15" Visibility="Collapsed"/>
- <StackPanel VerticalAlignment="Center" Margin="16">
- <TextBlock x:Name="HeadlineText" Text="Доступна новая версия" FontSize="26" FontWeight="Bold"/>
- <TextBlock x:Name="HeadlineVersionText" Text="" FontSize="18" FontWeight="SemiBold" Margin="0,4,0,0"/>
- </StackPanel>
- </Grid>
-
- <!-- Изменения: свертываемый блок с ограниченной высотой -->
- <Expander x:Name="ChangelogExpander" IsExpanded="False" Margin="0,10,0,0">
- <Expander.Header>
- <StackPanel Orientation="Horizontal">
- <TextBlock Text="Что нового" FontWeight="SemiBold"/>
- <TextBlock Text=" (раскрыть)" Margin="4,0,0,0"/>
- </StackPanel>
- </Expander.Header>
- <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto">
- <TextBlock x:Name="ChangelogText" TextWrapping="Wrap" FontFamily="Consolas"/>
- </ScrollViewer>
- </Expander>
-
- <!-- Кнопки: скачать и варианты обновления -->
- <StackPanel Margin="0,10,0,0">
- <Button x:Name="DownloadButton" Content="Скачать" Width="160" Click="DownloadButton_Click" Visibility="Collapsed"/>
- <StackPanel x:Name="PostDownloadButtons" Orientation="Horizontal" Margin="0,10,0,0" Visibility="Collapsed">
- <Button x:Name="BtnUpdateNow" Content="Закрыть и обновить" Width="160" Click="BtnUpdateNow_Click"/>
- <Button x:Name="BtnUpdateAndReopen" Content="Обновить и открыть" Width="160" Margin="8,0,0,0" Click="BtnUpdateAndReopen_Click"/>
- <Button x:Name="BtnUpdateOnExit" Content="Обновить при выходе" Width="170" Margin="8,0,0,0" Click="BtnUpdateOnExit_Click"/>
- <Button x:Name="BtnSkip" Content="Пропустить" Width="110" Margin="8,0,0,0" Click="BtnSkip_Click"/>
- </StackPanel>
- </StackPanel>
-
- <Button x:Name="CancelButton" Content="Отмена" Width="90" Margin="0,10,0,0" Click="CancelButton_Click" Visibility="Collapsed"/>
- <Button x:Name="OpenFolderButton" Content="Открыть папку" Width="130" Margin="0,6,0,0" Click="OpenFolderButton_Click" Visibility="Collapsed"/>
- </StackPanel>
- </Border>
- </StackPanel>
- </Border>
+                    <Button x:Name="CancelButton" Content="Отмена" Width="90" Margin="0,10,0,0" Click="CancelButton_Click" Visibility="Collapsed"/>
+                    <Button x:Name="OpenFolderButton" Content="Открыть папку" Width="130" Margin="0,6,0,0" Click="OpenFolderButton_Click" Visibility="Collapsed"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </Border>
 </UserControl>

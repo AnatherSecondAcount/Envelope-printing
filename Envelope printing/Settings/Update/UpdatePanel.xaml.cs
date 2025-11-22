@@ -28,6 +28,7 @@ namespace Envelope_printing
         private string _releaseBody;
         private readonly HttpClient _http;
         private bool _versionInitialized;
+        private bool _suppressAutoCheck;
 
         public UpdatePanel()
         {
@@ -83,7 +84,11 @@ namespace Envelope_printing
         }
 
         // публичный запуск проверки
-        public Task RunCheckAsync() => PerformCheckAsync();
+        public Task RunCheckAsync()
+        {
+            if (_suppressAutoCheck) return Task.CompletedTask;
+            return PerformCheckAsync();
+        }
 
         private static string SanitizeDisplayVersion(string pv)
         {
@@ -119,6 +124,7 @@ namespace Envelope_printing
 
         private async void CheckButton_Click(object sender, RoutedEventArgs e)
         {
+            _suppressAutoCheck = true; // пользователь сам инициировал
             await PerformCheckAsync();
         }
 
@@ -127,13 +133,13 @@ namespace Envelope_printing
             try
             {
                 CheckButton.IsEnabled = false;
-                StatusText.Text = "Проверка обновлений...";
+                StatusText.Text = "Поиск обновлений...";
                 var release = await GetLatestReleaseDetailsAsync();
                 _latestTag = release.Tag;
 
                 if (string.IsNullOrEmpty(release.DownloadUrl))
                 {
-                    StatusText.Text = "В релизе нет файлов для загрузки.";
+                    StatusText.Text = "Нет релизов для загрузки.";
                     DownloadButton.Visibility = Visibility.Collapsed;
                     HideUpdateInfo();
                     return;
@@ -144,25 +150,25 @@ namespace Envelope_printing
                 var latestComparable = TryParseVersionFromText(release.Name) ?? TryParseVersionFromText(release.Tag);
                 if (cur != null && latestComparable != null && latestComparable <= cur)
                 {
-                    StatusText.Text = "У вас установлена актуальная версия";
+                    StatusText.Text = "У вас последняя версия.";
                     DownloadButton.Visibility = Visibility.Collapsed;
                     ShowUpdateInfo(release, isNewer: false);
                 }
                 else
                 {
-                    StatusText.Text = "Доступна новая версия";
+                    StatusText.Text = "Доступно обновление.";
                     DownloadButton.Visibility = Visibility.Visible;
                     ShowUpdateInfo(release, isNewer: true);
                 }
             }
             catch (HttpRequestException httpEx)
             {
-                StatusText.Text = httpEx.StatusCode == HttpStatusCode.NotFound ? "Релиз не найден" : "Ошибка при проверке обновлений";
+                StatusText.Text = httpEx.StatusCode == HttpStatusCode.NotFound ? "Релиз не найден" : "Ошибка при запросе";
                 MessageBox.Show(httpEx.Message, "Обновление", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             catch (Exception ex)
             {
-                StatusText.Text = "Ошибка при проверке обновлений";
+                StatusText.Text = "Ошибка проверки";
                 MessageBox.Show(ex.Message, "Обновление", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally { CheckButton.IsEnabled = true; }
@@ -529,7 +535,7 @@ exit /b0
             try
             {
                 var versionLabel = !string.IsNullOrWhiteSpace(release.Name) ? release.Name : release.Tag;
-                HeadlineText.Text = isNewer ? "Доступна новая версия" : "У вас актуальная версия";
+                HeadlineText.Text = isNewer ? "Доступно обновление" : "Последняя версия";
                 HeadlineVersionText.Text = string.IsNullOrWhiteSpace(versionLabel) ? string.Empty : versionLabel;
                 _releaseBody = release.Body;
                 ChangelogText.Text = string.IsNullOrWhiteSpace(_releaseBody) ? "" : _releaseBody.Trim();

@@ -1,11 +1,8 @@
 using EnvelopePrinter.Core;
-using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Media;
-using System.Linq;
-using System.Collections.Generic;
 
 namespace Envelope_printing
 {
@@ -89,7 +86,7 @@ namespace Envelope_printing
         public string FontFamily { get => Model.FontFamily; set { Model.FontFamily = value ?? "Segoe UI"; OnPropertyChanged(); } }
         public FontWeight FontWeight { get { var s = string.IsNullOrWhiteSpace(Model.FontWeight) ? "Normal" : Model.FontWeight; return (FontWeight)new FontWeightConverter().ConvertFromString(s); } set { Model.FontWeight = value.ToString(); OnPropertyChanged(); } }
 
-        private static TEnum SafeParseEnum<TEnum>(string value, TEnum fallback) where TEnum: struct
+        private static TEnum SafeParseEnum<TEnum>(string value, TEnum fallback) where TEnum : struct
         {
             if (string.IsNullOrWhiteSpace(value)) return fallback;
             if (Enum.TryParse<TEnum>(value, true, out var res)) return res;
@@ -101,10 +98,16 @@ namespace Envelope_printing
         public TextAlignment TextAlignment { get => SafeParseEnum(Model.TextAlignment, System.Windows.TextAlignment.Left); set { Model.TextAlignment = value.ToString(); OnPropertyChanged(); OnPropertyChanged(nameof(TextAlignmentString)); } }
         public double Padding { get => Model.Padding; set { Model.Padding = value; OnPropertyChanged(); } }
         public double Opacity { get => Model.Opacity; set { Model.Opacity = value; OnPropertyChanged(); } }
-        public double RotationDegrees { get => Model.RotationDegrees; set { var rounded = Math.Round(value); // шаг1°
- // нормализуем в диапазон [-180;180)
- while (rounded >=180) rounded -=360; while (rounded < -180) rounded +=360;
- Model.RotationDegrees = rounded; Rotate.Angle = rounded; OnPropertyChanged(); } }
+        public double RotationDegrees
+        {
+            get => Model.RotationDegrees; set
+            {
+                var rounded = Math.Round(value); // шаг1°
+                                                 // нормализуем в диапазон [-180;180)
+                while (rounded >= 180) rounded -= 360; while (rounded < -180) rounded += 360;
+                Model.RotationDegrees = rounded; Rotate.Angle = rounded; OnPropertyChanged();
+            }
+        }
 
         public int ZIndex { get => Model.ZIndex; set { var clamped = Math.Max(0, Math.Min(10, value)); Model.ZIndex = clamped; OnPropertyChanged(); } }
         public bool IsItalic { get => Model.IsItalic; set { Model.IsItalic = value; OnPropertyChanged(); OnPropertyChanged(nameof(FontStyle)); } }

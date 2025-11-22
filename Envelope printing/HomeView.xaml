@@ -5,9 +5,49 @@
  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
  xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
  mc:Ignorable="d" 
- d:DesignHeight="450" d:DesignWidth="800">
-    <Grid Background="WhiteSmoke" RenderTransformOrigin="0.515,0.541">
-        <TextBlock Text="Добро пожаловать!" HorizontalAlignment="Center" VerticalAlignment="Top" FontSize="22" Foreground="Gray" TextAlignment="Center" Margin="0,196,0,0"/>
-        <TextBlock HorizontalAlignment="Center" FontSize="22" Foreground="Gray" TextAlignment="Right" Margin="0,230,0,0" VerticalAlignment="Top" Text="Выберите инструмент в левой панели" IsEnabled="False"/>
+ d:DesignHeight="450" d:DesignWidth="800"
+ Loaded="HomeView_Loaded" SizeChanged="HomeView_SizeChanged">
+    <Grid Background="{DynamicResource SurfaceBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition/>
+        </Grid.RowDefinitions>
+        <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16">
+            <TextBlock Text="Добро пожаловать!" FontSize="26" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" TextAlignment="Center" Margin="0,0,0,8"/>
+            <TextBlock Text="Выберите инструмент в левой панели" FontSize="18" Foreground="{DynamicResource TextPrimaryBrush}" Opacity="0.75" TextAlignment="Center"/>
+            <Border Margin="0,28,0,0" Padding="16,16,16,20" CornerRadius="8" Background="{DynamicResource OverlayBackgroundBrush}" BorderBrush="{DynamicResource OverlayBorderBrush}" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="Быстрые действия" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                    <!-- UniformGrid for responsive layout -->
+                    <UniformGrid x:Name="QuickActionsGrid" Columns="4" Rows="1" Margin="0" HorizontalAlignment="Center">
+                        <Button Command="{Binding DataContext.ShowPrintPreviewCommand, RelativeSource={RelativeSource AncestorType=Window}}" Style="{StaticResource ActionButtonStyle}" Margin="0,0,12,12" MinHeight="90" MinWidth="200" Padding="8">
+                            <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                                <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE715;" FontSize="28" HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                                <TextBlock Text="Печать"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding DataContext.ShowRecipientEditorCommand, RelativeSource={RelativeSource AncestorType=Window}}" Style="{StaticResource ActionButtonStyle}" Margin="0,0,12,12" MinHeight="90" MinWidth="200" Padding="8">
+                            <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                                <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE716;" FontSize="28" HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                                <TextBlock Text="База получателей" TextWrapping="Wrap" TextAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding DataContext.ShowTemplateDesignerCommand, RelativeSource={RelativeSource AncestorType=Window}}" Style="{StaticResource ActionButtonStyle}" Margin="0,0,12,12" MinHeight="90" MinWidth="200" Padding="8">
+                            <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                                <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE70F;" FontSize="28" HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                                <TextBlock Text="Дизайнер"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding DataContext.ShowSettingsCommand, RelativeSource={RelativeSource AncestorType=Window}}" Style="{StaticResource ActionButtonStyle}" Margin="0,0,0,12" MinHeight="90" MinWidth="200" Padding="8">
+                            <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                                <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE713;" FontSize="28" HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                                <TextBlock Text="Настройки"/>
+                            </StackPanel>
+                        </Button>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+        </StackPanel>
     </Grid>
 </UserControl>

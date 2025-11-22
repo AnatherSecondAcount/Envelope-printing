@@ -1,15 +1,13 @@
 ﻿using System.ComponentModel;
-using System.Runtime.CompilerServices;
-using System.Windows;
-using System.Windows.Input;
-using System.Reflection;
-using System.Net.Http;
-using System.Net;
-using System.Text.Json;
-using System;
-using System.Threading.Tasks;
 using System.Diagnostics;
+using System.Net;
+using System.Net.Http;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 
 namespace Envelope_printing
 {
@@ -218,7 +216,7 @@ namespace Envelope_printing
             if (string.IsNullOrWhiteSpace(s)) return null;
             var clean = s.Trim();
             int plus = clean.IndexOf('+');
-            if (plus >0) clean = clean.Substring(0, plus);
+            if (plus > 0) clean = clean.Substring(0, plus);
             clean = clean.TrimStart('v', 'V');
             if (Version.TryParse(clean, out var v)) return v;
             if (Version.TryParse(clean + ".0", out v)) return v;
@@ -234,7 +232,7 @@ namespace Envelope_printing
                 if (!string.IsNullOrWhiteSpace(pv))
                 {
                     int plus = pv.IndexOf('+');
-                    if (plus >0) pv = pv.Substring(0, plus);
+                    if (plus > 0) pv = pv.Substring(0, plus);
                     return pv;
                 }
                 return Assembly.GetExecutingAssembly().GetName().Version?.ToString();

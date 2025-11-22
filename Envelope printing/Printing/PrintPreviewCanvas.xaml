@@ -3,13 +3,13 @@
  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  UseLayoutRounding="True" SnapsToDevicePixels="True"
- Background="#E5E5E5">
+ Background="{DynamicResource PreviewBackdropBrush}">
  <Grid RenderOptions.BitmapScalingMode="HighQuality">
- <!-- Page (white) -->
- <Border x:Name="PrinterSheet" Background="White" BorderBrush="#DDD" BorderThickness="1" CacheMode="BitmapCache">
+ <!-- Page (surface) -->
+ <Border x:Name="PrinterSheet" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource PreviewBorderBrush}" BorderThickness="1" CacheMode="BitmapCache">
  <Grid>
- <!-- Imageable area container (no border, just subtle backdrop) -->
- <Border x:Name="ImageableRect" BorderThickness="0" Background="#08000000" HorizontalAlignment="Left" VerticalAlignment="Top" Panel.ZIndex="0"/>
+ <!-- Imageable area container (subtle backdrop) -->
+ <Border x:Name="ImageableRect" BorderThickness="0" Background="{DynamicResource ImageableAreaBrush}" HorizontalAlignment="Left" VerticalAlignment="Top" Panel.ZIndex="0"/>
 
  <!-- Content canvas (clipped to true imageable area by code) -->
  <Canvas x:Name="PreviewCanvas" Panel.ZIndex="1" IsHitTestVisible="False"/>

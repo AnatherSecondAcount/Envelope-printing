@@ -5,7 +5,6 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.Threading;
 
 namespace Envelope_printing
 {
@@ -28,6 +27,9 @@ namespace Envelope_printing
             TryEnsureLogFile();
             Log("Startup: begin");
 
+            // Apply resource theme early (affects brushes)
+            try { ThemeManager.ApplyTheme(ThemeManager.LoadPreference()); } catch { }
+
             // Single-instance guard (disabled while debugging or when EP_ALLOW_MULTI=1)
             var disableGuard = Debugger.IsAttached || string.Equals(Environment.GetEnvironmentVariable("EP_ALLOW_MULTI"), "1");
             if (!disableGuard)
@@ -45,7 +47,6 @@ namespace Envelope_printing
 
             base.OnStartup(e);
             TryRegisterAppLogoResource();
-
             _startupCts = new CancellationTokenSource();
 
             try
@@ -69,6 +70,8 @@ namespace Envelope_printing
                 main.DataContext = new ShellViewModel();
                 MainWindow = main;
                 main.Show();
+                // After window exists, apply system title bar theme (DWM)
+                try { ThemeManager.ApplySystemTitleBarForCurrentPreference(main); } catch { }
                 Log("Startup: main window shown");
             }
             catch (Exception ex)
@@ -164,7 +167,7 @@ namespace Envelope_printing
                 Directory.CreateDirectory(folder);
                 if (string.IsNullOrEmpty(_logFilePath))
                 {
-                    _logFilePath = Path.Combine(folder, $"app-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+                    _logFilePath = Path.Combine(folder, $"app-{DateTime.Now:yyyyMMdd-HHmms}.log");
                 }
                 var sb = new StringBuilder();
                 sb.AppendLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}");
@@ -353,7 +356,7 @@ exit /b0
                 var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
                 var folder = Path.Combine(appData, "EnvelopePrinter", "logs");
                 Directory.CreateDirectory(folder);
-                _logFilePath ??= Path.Combine(folder, $"app-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+                _logFilePath ??= Path.Combine(folder, $"app-{DateTime.Now:yyyyMMdd-HHmms}.log");
             }
             catch { }
         }

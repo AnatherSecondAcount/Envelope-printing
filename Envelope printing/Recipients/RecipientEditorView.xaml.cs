@@ -1,8 +1,7 @@
-﻿using System;
+﻿using Microsoft.Win32;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using Microsoft.Win32;
 using System.Windows.Media; // for VisualTreeHelper
 
 namespace Envelope_printing
@@ -12,8 +11,20 @@ namespace Envelope_printing
         public RecipientEditorView()
         {
             InitializeComponent();
-            Loaded += (s, e) => this.Focus();
+            Loaded += RecipientEditorView_Loaded;
             DataContextChanged += RecipientEditorView_DataContextChanged;
+        }
+
+        private void RecipientEditorView_Loaded(object sender, RoutedEventArgs e)
+        {
+            // Do not force focus to grid; keep natural focus flow.
+            FocusSearchIfVisible();
+        }
+
+        private void FocusSearchIfVisible()
+        {
+            if (DataContext is RecipientEditorViewModel vm && vm.IsSearchVisible && SearchTextBox != null)
+                SearchTextBox.Focus();
         }
 
         // Intercept Delete key to trigger VM deletion
@@ -38,6 +49,16 @@ namespace Envelope_printing
             if (e.NewValue is RecipientEditorViewModel vm)
             {
                 SubscribeVm(vm);
+                // react to search visibility changes
+                vm.PropertyChanged += Vm_PropertyChanged;
+            }
+        }
+
+        private void Vm_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(RecipientEditorViewModel.IsSearchVisible))
+            {
+                Dispatcher.BeginInvoke(new Action(FocusSearchIfVisible));
             }
         }
 
@@ -60,6 +81,7 @@ namespace Envelope_printing
             vm.RequestImportExcelPath -= OnRequestImportExcelPath;
             vm.ScrollToRecipientRequested -= OnScrollToRecipientRequested;
             vm.EnsureGridFocusRequested -= OnEnsureGridFocusRequested;
+            vm.PropertyChanged -= Vm_PropertyChanged;
         }
 
         // Диалоги добавления/редактирования
@@ -75,12 +97,10 @@ namespace Envelope_printing
 
         private void OnEnsureGridFocusRequested()
         {
-            // Ставим фокус на сам DataGrid.
-            // Это активирует визуальное выделение (как при реальном фокусе).
-            if (RecipientsGrid != null)
-            {
-                RecipientsGrid.Focus();
-            }
+            // Do not steal focus from search box if search visible
+            if (DataContext is RecipientEditorViewModel vm && vm.IsSearchVisible)
+                return;
+            RecipientsGrid?.Focus();
         }
 
         // Путь для бэкапа
@@ -132,14 +152,14 @@ namespace Envelope_printing
             if (recipient != null)
             {
                 RecipientsGrid.ScrollIntoView(recipient);
+                // Select row visually (SelectedRecipient already set in VM)
             }
         }
 
         // Обеспечиваем выделение строки по правому клику перед открытием контекстного меню
         private void RecipientsGrid_ContextMenuOpening(object sender, ContextMenuEventArgs e)
         {
-            var dataGrid = sender as DataGrid;
-            if (dataGrid == null) return;
+            if (sender is not DataGrid dataGrid) return;
             var originalSource = e.OriginalSource as DependencyObject;
             var row = FindVisualParent<DataGridRow>(originalSource);
             if (row != null)

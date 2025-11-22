@@ -1,11 +1,7 @@
 ﻿using ClosedXML.Excel;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using System.IO;
-using Microsoft.Data.Sqlite;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Drawing;
 
 namespace EnvelopePrinter.Core
 {
@@ -21,11 +17,46 @@ namespace EnvelopePrinter.Core
             var appFolder = Path.Combine(appData, "EnvelopePrinter");
             if (!Directory.Exists(appFolder)) Directory.CreateDirectory(appFolder);
             _databasePath = Path.Combine(appFolder, "envelopes.db");
+            EnsureAssetsFolder();
 
             TryApplyMigrations();
             TryEnsureTemplateItemColumns();
             TryEnsureRecipientColumns();
             TryEnsureTemplateColumns();
+        }
+
+        // Assets folder (public static so UI layer can build paths)
+        public static string GetAssetsFolder()
+        {
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var folder = Path.Combine(appData, "EnvelopePrinter", "assets");
+            if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+            return folder;
+        }
+        private static void EnsureAssetsFolder() => GetAssetsFolder();
+
+        // Helper to copy directory contents (overwrite existing files)
+        private static void CopyDirectory(string sourceDir, string targetDir)
+        {
+            if (!Directory.Exists(sourceDir)) return;
+            Directory.CreateDirectory(targetDir);
+            foreach (var file in Directory.GetFiles(sourceDir))
+            {
+                var name = Path.GetFileName(file);
+                var dest = Path.Combine(targetDir, name);
+                try { File.Copy(file, dest, true); } catch { }
+            }
+        }
+        private static void SafeDeleteDirectory(string dir)
+        {
+            try
+            {
+                if (!Directory.Exists(dir)) return;
+                foreach (var f in Directory.GetFiles(dir)) { try { File.Delete(f); } catch { } }
+                foreach (var d in Directory.GetDirectories(dir)) { SafeDeleteDirectory(d); }
+                Directory.Delete(dir, true);
+            }
+            catch { }
         }
 
         private void TryApplyMigrations()
@@ -118,7 +149,7 @@ namespace EnvelopePrinter.Core
                     alterCmd.CommandText = sql; try { alterCmd.ExecuteNonQuery(); } catch { }
                 }
                 // Санитизация NULL -> значения по умолчанию для обязательных текстовых полей
-                string[] textCols = new[] { "Background","BorderBrush","ContentBindingPath","FontFamily","FontWeight","Foreground","HorizontalAlignment","ImagePath","Name","StaticText","Stretch","TextAlignment","VerticalAlignment" };
+                string[] textCols = new[] { "Background", "BorderBrush", "ContentBindingPath", "FontFamily", "FontWeight", "Foreground", "HorizontalAlignment", "ImagePath", "Name", "StaticText", "Stretch", "TextAlignment", "VerticalAlignment" };
                 foreach (var col in textCols)
                 {
                     using var upd = connection.CreateCommand();
@@ -245,7 +276,7 @@ namespace EnvelopePrinter.Core
                 foreach (var src in template.Items)
                 {
                     TemplateItem target = null;
-                    if (src.Id !=0)
+                    if (src.Id != 0)
                     {
                         target = existing.Items.FirstOrDefault(i => i.Id == src.Id);
                     }
@@ -285,36 +316,36 @@ namespace EnvelopePrinter.Core
             {
                 var ws = workbook.Worksheets.Add("Получатели");
                 // Заголовки
-                ws.Cell(1,1).Value = "Учреждение";
-                ws.Cell(1,2).Value = "Улица";
-                ws.Cell(1,3).Value = "Индекс";
-                ws.Cell(1,4).Value = "Город";
-                ws.Cell(1,5).Value = "Область";
-                ws.Cell(1,6).Value = "Страна";
+                ws.Cell(1, 1).Value = "Учреждение";
+                ws.Cell(1, 2).Value = "Улица";
+                ws.Cell(1, 3).Value = "Индекс";
+                ws.Cell(1, 4).Value = "Город";
+                ws.Cell(1, 5).Value = "Область";
+                ws.Cell(1, 6).Value = "Страна";
 
                 // Стиль шапки: синий фон, белый жирный текст
-                var header = ws.Range(1,1,1,6);
+                var header = ws.Range(1, 1, 1, 6);
                 header.Style.Fill.BackgroundColor = XLColor.FromHtml("#2F5597");
                 header.Style.Font.Bold = true;
                 header.Style.Font.FontColor = XLColor.White;
                 header.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
 
                 // Данные
-                int r =2;
+                int r = 2;
                 foreach (var x in recipients)
                 {
-                    ws.Cell(r,1).Value = x.OrganizationName;
-                    ws.Cell(r,2).Value = x.AddressLine1;
-                    ws.Cell(r,3).Value = x.PostalCode;
-                    ws.Cell(r,4).Value = x.City;
-                    ws.Cell(r,5).Value = x.Region;
-                    ws.Cell(r,6).Value = x.Country;
+                    ws.Cell(r, 1).Value = x.OrganizationName;
+                    ws.Cell(r, 2).Value = x.AddressLine1;
+                    ws.Cell(r, 3).Value = x.PostalCode;
+                    ws.Cell(r, 4).Value = x.City;
+                    ws.Cell(r, 5).Value = x.Region;
+                    ws.Cell(r, 6).Value = x.Country;
                     r++;
                 }
-                var used = ws.Range(1,1,Math.Max(r-1,1),6);
+                var used = ws.Range(1, 1, Math.Max(r - 1, 1), 6);
                 used.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
                 used.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
-                ws.Columns(1,6).AdjustToContents();
+                ws.Columns(1, 6).AdjustToContents();
                 workbook.SaveAs(filePath);
             }
         }
@@ -333,7 +364,7 @@ namespace EnvelopePrinter.Core
                 var headerRow = rows.First();
                 var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 int colCount = headerRow.CellCount();
-                for (int c =1; c <= colCount; c++)
+                for (int c = 1; c <= colCount; c++)
                 {
                     var header = headerRow.Cell(c).GetValue<string>().Trim();
                     if (!string.IsNullOrEmpty(header) && !map.ContainsKey(header)) map[header] = c;
@@ -360,12 +391,12 @@ namespace EnvelopePrinter.Core
                     if (row.IsEmpty()) continue;
                     var r = new Recipient
                     {
-                        OrganizationName = orgCol >0 ? row.Cell(orgCol).GetValue<string>() : string.Empty,
-                        AddressLine1 = streetCol >0 ? row.Cell(streetCol).GetValue<string>() : string.Empty,
-                        PostalCode = indexCol >0 ? row.Cell(indexCol).GetValue<string>() : string.Empty,
-                        City = cityCol >0 ? row.Cell(cityCol).GetValue<string>() : string.Empty,
-                        Region = regionCol >0 ? row.Cell(regionCol).GetValue<string>() : string.Empty,
-                        Country = countryCol >0 ? row.Cell(countryCol).GetValue<string>() : string.Empty
+                        OrganizationName = orgCol > 0 ? row.Cell(orgCol).GetValue<string>() : string.Empty,
+                        AddressLine1 = streetCol > 0 ? row.Cell(streetCol).GetValue<string>() : string.Empty,
+                        PostalCode = indexCol > 0 ? row.Cell(indexCol).GetValue<string>() : string.Empty,
+                        City = cityCol > 0 ? row.Cell(cityCol).GetValue<string>() : string.Empty,
+                        Region = regionCol > 0 ? row.Cell(regionCol).GetValue<string>() : string.Empty,
+                        Country = countryCol > 0 ? row.Cell(countryCol).GetValue<string>() : string.Empty
                     };
                     // если строка пустая по основным полям — пропускаем
                     if (string.IsNullOrWhiteSpace(r.OrganizationName) && string.IsNullOrWhiteSpace(r.AddressLine1) && string.IsNullOrWhiteSpace(r.City) && string.IsNullOrWhiteSpace(r.PostalCode))
@@ -373,7 +404,7 @@ namespace EnvelopePrinter.Core
                     recipientsToImport.Add(r);
                 }
 
-                if (recipientsToImport.Count ==0) return;
+                if (recipientsToImport.Count == 0) return;
                 using (var context = new ApplicationDbContext())
                 {
                     context.Recipients.AddRange(recipientsToImport);
@@ -397,22 +428,42 @@ namespace EnvelopePrinter.Core
         }
         private static void ClearPools() { try { SqliteConnection.ClearAllPools(); } catch { } }
 
+        // Backup now includes assets images (creates sibling folder <backup>.assets)
         public void BackupDatabase(string destinationPath)
         {
             CheckpointWal();
             ClearPools();
             File.Copy(_databasePath, destinationPath, true);
-
             TryCopySideFile(_databasePath + "-wal", destinationPath + "-wal");
             TryCopySideFile(_databasePath + "-shm", destinationPath + "-shm");
+            // assets copy
+            try
+            {
+                var assetsSrc = GetAssetsFolder();
+                var assetsDest = destinationPath + ".assets"; // folder next to backup file
+                if (Directory.Exists(assetsDest)) SafeDeleteDirectory(assetsDest);
+                CopyDirectory(assetsSrc, assetsDest);
+            }
+            catch { }
         }
 
+        // Restore now also restores assets from <source>.assets folder if present
         public void RestoreDatabase(string sourcePath)
         {
             ClearPools();
             File.Copy(sourcePath, _databasePath, true);
             TryDeleteSideFile(_databasePath + "-wal");
             TryDeleteSideFile(_databasePath + "-shm");
+            try
+            {
+                var assetsSrc = sourcePath + ".assets";
+                if (Directory.Exists(assetsSrc))
+                {
+                    var assetsDest = GetAssetsFolder();
+                    CopyDirectory(assetsSrc, assetsDest);
+                }
+            }
+            catch { }
         }
 
         private static void TryCopySideFile(string from, string to)

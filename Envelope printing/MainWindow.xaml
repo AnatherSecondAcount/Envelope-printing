@@ -1,315 +1,222 @@
-﻿<Window x:Class="Envelope_printing.MainWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:Envelope_printing"
-        mc:Ignorable="d"
-        Title="Печать конвертов" Height="600" Width="900"
-        WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource AppBackground}"
-        Icon="{DynamicResource AppLogo}">
-
-    <Window.Resources>
-        <!-- Конвертер для управления видимостью -->
+<Window x:Class="Envelope_printing.MainWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Title="Печать конвертов" Height="600" Width="900" Background="{DynamicResource AppBackground}" WindowStartupLocation="CenterScreen" MinWidth="900" MinHeight="600">
+ <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
-
-        <!-- Navigation button base, theme-aware -->
-        <Style x:Key="NavButtonBaseStyle" TargetType="{x:Type ButtonBase}">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="HorizontalAlignment" Value="Stretch"/>
-            <Setter Property="HorizontalContentAlignment" Value="Left"/>
-            <Setter Property="Padding" Value="0"/>
-            <Setter Property="Height" Value="40"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <!-- Tooltips: show only when panel is collapsed -->
-            <Setter Property="ToolTipService.IsEnabled" Value="True"/>
-            <Setter Property="ToolTipService.Placement" Value="Right"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="{x:Type ButtonBase}">
-                        <Grid>
-                            <!-- accent bar for active item -->
-                            <Border x:Name="AccentBar" Width="3" HorizontalAlignment="Left" Background="{DynamicResource AccentBrush}" Visibility="Collapsed"/>
-                            <Border x:Name="Bg" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="4" Margin="3,0,0,0">
-                                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
-                            </Border>
-                        </Grid>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource ButtonHoverBrush}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource ButtonHoverBrush}"/>
-                </Trigger>
-                <DataTrigger Binding="{Binding DataContext.IsLeftPanelExpanded, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
-                    <Setter Property="ToolTipService.IsEnabled" Value="False"/>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
-
-        <!-- Конечные стили, которые наследуются от базового -->
-        <Style x:Key="NavButtonStyle" TargetType="Button" BasedOn="{StaticResource NavButtonBaseStyle}"/>
-        <Style x:Key="NavToggleButtonStyle" TargetType="ToggleButton" BasedOn="{StaticResource NavButtonBaseStyle}"/>
-
-        <!-- Стиль для текста на кнопках, который будет скрываться -->
-        <Style x:Key="NavButtonTextStyle" TargetType="TextBlock">
+        <!-- Indicator style: small rounded pill at left, uses AccentBrush -->
+        <Style x:Key="NavActiveIndicatorStyle" TargetType="Border">
+            <Setter Property="Width" Value="5"/>
+            <Setter Property="Height" Value="23"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="HorizontalAlignment" Value="Left"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Visibility" Value="Visible"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="Opacity" Value="0"/>
+        </Style>
+        <!-- Иконки: смещаем немного влево в обоих состояниях -->
+        <Style x:Key="NavIconStyle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="FontSize" Value="20"/>
+            <Setter Property="Margin" Value="10,0,0,0"/>
+            <!-- Foreground берём из базового стиля TextBlock через BasedOn (динамический ресурс),
+ поэтому цвет иконок будет меняться вместе с темой -->
             <Style.Triggers>
-                <DataTrigger Binding="{Binding DataContext.IsLeftPanelExpanded, RelativeSource={RelativeSource AncestorType=Window}}" Value="False">
-                    <Setter Property="Visibility" Value="Collapsed"/>
+                <DataTrigger Binding="{Binding IsLeftPanelExpanded}" Value="False">
+                    <Setter Property="Margin" Value="10,0,0,0"/>
                 </DataTrigger>
             </Style.Triggers>
         </Style>
-
-        <!-- При свернутой панели сужаем внутреннюю сетку кнопки до42px и центрируем её; добавляем правый внутренний отступ для головы бейджа -->
-        <Style x:Key="CollapsedNavGridStyle" TargetType="Grid">
-            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <!-- Текст: плавная анимация появления/исчезновения вместо Visibility -->
+        <Style x:Key="NavTextStyle" TargetType="TextBlock" BasedOn="{StaticResource NavButtonTextStyle}">
+            <Setter Property="Opacity" Value="1"/>
             <Style.Triggers>
-                <DataTrigger Binding="{Binding DataContext.IsLeftPanelExpanded, RelativeSource={RelativeSource AncestorType=Window}}" Value="False">
-                    <Setter Property="Width" Value="42"/>
-                    <Setter Property="HorizontalAlignment" Value="Center"/>
+                <DataTrigger Binding="{Binding IsLeftPanelExpanded}" Value="False">
+                    <Setter Property="IsHitTestVisible" Value="False"/>
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15" FillBehavior="HoldEnd"/>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
                 </DataTrigger>
-            </Style.Triggers>
-        </Style>
-
-        <!-- Styles to highlight active section -->
-        <Style x:Key="HomeNavButtonStyle" TargetType="Button" BasedOn="{StaticResource NavButtonStyle}">
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding CurrentSection}" Value="Home">
-                    <Setter Property="Background" Value="{DynamicResource ButtonPressedBrush}"/>
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="Button">
-                                <Grid>
-                                    <Border Width="3" HorizontalAlignment="Left" Background="{DynamicResource AccentBrush}"/>
-                                    <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="4" Margin="3,0,0,0">
-                                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
-                                    </Border>
-                                </Grid>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
-        <Style x:Key="PrintNavButtonStyle" TargetType="Button" BasedOn="{StaticResource NavButtonStyle}">
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding CurrentSection}" Value="Print">
-                    <Setter Property="Background" Value="{DynamicResource ButtonPressedBrush}"/>
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="Button">
-                                <Grid>
-                                    <Border Width="3" HorizontalAlignment="Left" Background="{DynamicResource AccentBrush}"/>
-                                    <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="4" Margin="3,0,0,0">
-                                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
-                                    </Border>
-                                </Grid>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
-        <Style x:Key="RecipientsNavButtonStyle" TargetType="Button" BasedOn="{StaticResource NavButtonStyle}">
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding CurrentSection}" Value="Recipients">
-                    <Setter Property="Background" Value="{DynamicResource ButtonPressedBrush}"/>
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="Button">
-                                <Grid>
-                                    <Border Width="3" HorizontalAlignment="Left" Background="{DynamicResource AccentBrush}"/>
-                                    <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="4" Margin="3,0,0,0">
-                                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
-                                    </Border>
-                                </Grid>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
-        <Style x:Key="DesignerNavButtonStyle" TargetType="Button" BasedOn="{StaticResource NavButtonStyle}">
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding CurrentSection}" Value="Designer">
-                    <Setter Property="Background" Value="{DynamicResource ButtonPressedBrush}"/>
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="Button">
-                                <Grid>
-                                    <Border Width="3" HorizontalAlignment="Left" Background="{DynamicResource AccentBrush}"/>
-                                    <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="4" Margin="3,0,0,0">
-                                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
-                                    </Border>
-                                </Grid>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
-        <Style x:Key="SettingsNavButtonStyle" TargetType="Button" BasedOn="{StaticResource NavButtonStyle}">
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding CurrentSection}" Value="Settings">
-                    <Setter Property="Background" Value="{DynamicResource ButtonPressedBrush}"/>
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="Button">
-                                <Grid>
-                                    <Border Width="3" HorizontalAlignment="Left" Background="{DynamicResource AccentBrush}"/>
-                                    <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="4" Margin="3,0,0,0">
-                                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
-                                    </Border>
-                                </Grid>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
+                <DataTrigger Binding="{Binding IsLeftPanelExpanded}" Value="True">
+                    <Setter Property="IsHitTestVisible" Value="True"/>
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15" FillBehavior="HoldEnd"/>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
                 </DataTrigger>
             </Style.Triggers>
         </Style>
     </Window.Resources>
-
-    <!-- Root host contains Splash layer and App layer -->
     <Grid Background="{DynamicResource AppBackground}">
-        <!-- Splash overlay disabled: keep collapsed to avoid double-loading effect -->
-        <Grid x:Name="SplashGrid" Background="{DynamicResource AppBackground}" Visibility="Collapsed">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
-            <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16">
-                <!-- Optional logo if added later as DynamicResource AppLogo -->
-                <Image Width="72" Height="72" Margin="0,0,0,10" Source="{DynamicResource AppLogo}" Stretch="Uniform"/>
-                <TextBlock Text="Печать конвертов" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-                <TextBlock Text="Загрузка..." Margin="0,6,0,12" HorizontalAlignment="Center"/>
-            </StackPanel>
-        </Grid>
-
-        <!-- App layer: visible by default -->
-        <Grid x:Name="AppRoot" Visibility="Visible" Background="{DynamicResource AppBackground}">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="{Binding LeftPanelWidth}"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-
-            <!-- ЛЕВАЯ НАВИГАЦИОННАЯ ПАНЕЛЬ -->
-            <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource FieldBorderBrush}" BorderThickness="1" Margin="5" CornerRadius="8">
-                <Border.Effect>
-                    <DropShadowEffect ShadowDepth="2" Color="Gray" Opacity="0.15" BlurRadius="8"/>
-                </Border.Effect>
-
-                <!-- allow notification dot to overflow without clipping -->
-                <Grid ClipToBounds="False">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <!-- Верхняя группа -->
-                        <RowDefinition Height="*"/>
-                        <!-- Распорка -->
-                        <RowDefinition Height="Auto"/>
-                        <!-- Нижняя группа -->
-                    </Grid.RowDefinitions>
-
-                    <StackPanel Grid.Row="0" Margin="4">
-                        <Button Style="{StaticResource HomeNavButtonStyle}" Command="{Binding ShowHomeCommand}" ToolTip="На главную">
-                            <Grid Style="{StaticResource CollapsedNavGridStyle}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="{Binding LeftPanelWidth}"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <!-- Левая панель навигации -->
+        <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource FieldBorderBrush}" BorderThickness="1" Margin="6,6,4,6" CornerRadius="4">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <!-- верхние кнопки -->
+                    <RowDefinition Height="*"/>
+                    <!-- центр / прокладка -->
+                    <RowDefinition Height="Auto"/>
+                    <!-- нижние кнопки -->
+                </Grid.RowDefinitions>
+                <!-- Верхняя группа -->
+                <StackPanel Grid.Row="0" Margin="4,6,4,4">
+                    <Button Style="{StaticResource HomeNavButtonStyle}" Command="{Binding ShowHomeCommand}" ToolTip="На главную">
+                        <Grid Height="34">
+                            <!-- pill indicator -->
+                            <Border>
+                                <Border.Style>
+                                    <Style BasedOn="{StaticResource NavActiveIndicatorStyle}" TargetType="Border">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CurrentSection}" Value="Home">
+                                                <Setter Property="Opacity" Value="1"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                            </Border>
+                            <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="42"/>
+                                    <ColumnDefinition Width="50"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets" Text="&#xE80F;" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="16"/>
-                                <TextBlock Grid.Column="1" Text="На главную" Style="{StaticResource NavButtonTextStyle}"/>
+                                <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets" Text="&#xE80F;" Style="{StaticResource NavIconStyle}"/>
+                                <TextBlock Grid.Column="1" Text="На главную" Style="{StaticResource NavTextStyle}"/>
                             </Grid>
-                        </Button>
-                        <Button Style="{StaticResource PrintNavButtonStyle}" Command="{Binding ShowPrintPreviewCommand}" FontWeight="Bold" ToolTip="Печать конвертов">
-                            <Grid Style="{StaticResource CollapsedNavGridStyle}">
+                        </Grid>
+                    </Button>
+                    <Button Style="{StaticResource PrintNavButtonStyle}" Command="{Binding ShowPrintPreviewCommand}" ToolTip="Печать конвертов">
+                        <Grid Height="34">
+                            <!-- pill indicator -->
+                            <Border>
+                                <Border.Style>
+                                    <Style BasedOn="{StaticResource NavActiveIndicatorStyle}" TargetType="Border">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CurrentSection}" Value="Print">
+                                                <Setter Property="Opacity" Value="1"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                            </Border>
+                            <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="42"/>
+                                    <ColumnDefinition Width="50"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <!-- Use mail icon for printing envelopes -->
-                                <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets" Text="&#xE715;" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="16"/>
-                                <TextBlock Grid.Column="1" Text="Печать конвертов" Style="{StaticResource NavButtonTextStyle}"/>
+                                <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets" Text="&#xE715;" Style="{StaticResource NavIconStyle}"/>
+                                <TextBlock Grid.Column="1" Text="Печать конвертов" Style="{StaticResource NavTextStyle}"/>
                             </Grid>
-                        </Button>
-                    </StackPanel>
-
-                    <StackPanel Grid.Row="2" VerticalAlignment="Bottom" Margin="4">
-                        <Button Style="{StaticResource RecipientsNavButtonStyle}" Command="{Binding ShowRecipientEditorCommand}" ToolTip="База получателей">
-                            <Grid Style="{StaticResource CollapsedNavGridStyle}">
+                        </Grid>
+                    </Button>
+                </StackPanel>
+                <!-- Нижняя группа -->
+                <StackPanel Grid.Row="2" Margin="4" VerticalAlignment="Bottom">
+                    <Button Style="{StaticResource RecipientsNavButtonStyle}" Command="{Binding ShowRecipientEditorCommand}" ToolTip="База получателей">
+                        <!-- Added accent stripe -->
+                        <Grid Height="34">
+                            <!-- pill indicator -->
+                            <Border>
+                                <Border.Style>
+                                    <Style BasedOn="{StaticResource NavActiveIndicatorStyle}" TargetType="Border">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CurrentSection}" Value="Recipients">
+                                                <Setter Property="Opacity" Value="1"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                            </Border>
+                            <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="42"/>
+                                    <ColumnDefinition Width="50"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets" Text="&#xE716;" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="16"/>
-                                <TextBlock Grid.Column="1" Text="База получателей" Style="{StaticResource NavButtonTextStyle}"/>
+                                <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets" Text="&#xE716;" Style="{StaticResource NavIconStyle}"/>
+                                <TextBlock Grid.Column="1" Text="База получателей" Style="{StaticResource NavTextStyle}"/>
                             </Grid>
-                        </Button>
-                        <Button Style="{StaticResource DesignerNavButtonStyle}" Command="{Binding ShowTemplateDesignerCommand}" ToolTip="Дизайнер">
-                            <Grid Style="{StaticResource CollapsedNavGridStyle}">
+                        </Grid>
+                    </Button>
+                    <Button Style="{StaticResource DesignerNavButtonStyle}" Command="{Binding ShowTemplateDesignerCommand}" ToolTip="Дизайнер">
+                        <!-- Added accent stripe -->
+                        <Grid Height="34">
+                            <!-- pill indicator -->
+                            <Border>
+                                <Border.Style>
+                                    <Style BasedOn="{StaticResource NavActiveIndicatorStyle}" TargetType="Border">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CurrentSection}" Value="Designer">
+                                                <Setter Property="Opacity" Value="1"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                            </Border>
+                            <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="42"/>
+                                    <ColumnDefinition Width="50"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets" Text="&#xE70F;" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="16"/>
-                                <TextBlock Grid.Column="1" Text="Дизайнер" Style="{StaticResource NavButtonTextStyle}"/>
+                                <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets" Text="&#xE70F;" Style="{StaticResource NavIconStyle}"/>
+                                <TextBlock Grid.Column="1" Text="Дизайнер" Style="{StaticResource NavTextStyle}"/>
                             </Grid>
-                        </Button>
-                        <Button Style="{StaticResource SettingsNavButtonStyle}" Command="{Binding ShowSettingsCommand}" ToolTip="Настройки">
-                            <Grid Style="{StaticResource CollapsedNavGridStyle}">
+                        </Grid>
+                    </Button>
+                    <Button Style="{StaticResource SettingsNavButtonStyle}" Command="{Binding ShowSettingsCommand}" ToolTip="Настройки">
+                        <!-- Added accent stripe -->
+                        <Grid Height="34">
+                            <!-- pill indicator -->
+                            <Border>
+                                <Border.Style>
+                                    <Style BasedOn="{StaticResource NavActiveIndicatorStyle}" TargetType="Border">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CurrentSection}" Value="Settings">
+                                                <Setter Property="Opacity" Value="1"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                            </Border>
+                            <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="42"/>
+                                    <ColumnDefinition Width="50"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <Grid Grid.Column="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ClipToBounds="False">
-                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE713;" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="16"/>
-                                    <!-- Overlay canvas keeps icon centered while badge can occupy extra space -->
-                                    <Canvas HorizontalAlignment="Center" VerticalAlignment="Center" Width="42" Height="42" IsHitTestVisible="False" ClipToBounds="False">
-                                        <Ellipse Width="10" Height="10" Fill="#2B88D8" Stroke="White" StrokeThickness="1.2"
-                                                 Canvas.Left="27" Canvas.Top="8">
-                                            <Ellipse.Visibility>
-                                                <Binding Path="HasUpdateAvailable" Converter="{StaticResource BoolToVis}"/>
-                                            </Ellipse.Visibility>
-                                        </Ellipse>
-                                    </Canvas>
-                                </Grid>
-                                <TextBlock Grid.Column="1" Text="Настройки" Style="{StaticResource NavButtonTextStyle}"/>
+                                <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets" Text="&#xE713;" Style="{StaticResource NavIconStyle}"/>
+                                <TextBlock Grid.Column="1" Text="Настройки" Style="{StaticResource NavTextStyle}"/>
                             </Grid>
-                        </Button>
-                        <Separator Margin="4"/>
-                        <ToggleButton Style="{StaticResource NavToggleButtonStyle}" IsChecked="{Binding IsLeftPanelExpanded, Mode=TwoWay}" ToolTip="Свернуть/Развернуть панель">
-                            <Grid Style="{StaticResource CollapsedNavGridStyle}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="42"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets" Text="&#xE700;" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="16"/>
-                                <TextBlock Grid.Column="1" Text="Свернуть" Style="{StaticResource NavButtonTextStyle}"/>
-                            </Grid>
-                        </ToggleButton>
-                    </StackPanel>
-                </Grid>
-            </Border>
-
-            <!-- ОБЛАСТЬ КОНТЕНТА -->
-            <Border Grid.Column="1" Margin="0,5,5,5" CornerRadius="8" SnapsToDevicePixels="True" Background="Transparent">
-                <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource FieldBorderBrush}" BorderThickness="1" CornerRadius="8">
-                    <Border.Effect>
-                        <DropShadowEffect ShadowDepth="2" Color="Gray" Opacity="0.15" BlurRadius="8"/>
-                    </Border.Effect>
-                    <ContentControl Content="{Binding CurrentView}" Margin="5"/>
-                </Border>
-            </Border>
-        </Grid>
+                        </Grid>
+                    </Button>
+                    <Separator Margin="4"/>
+                    <ToggleButton Style="{StaticResource NavToggleButtonStyle}" IsChecked="{Binding IsLeftPanelExpanded, Mode=TwoWay}" ToolTip="Свернуть / Развернуть">
+                        <Grid Height="34">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="50"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets" Text="&#xE700;" Style="{StaticResource NavIconStyle}"/>
+                            <TextBlock Grid.Column="1" Text="Свернуть" Style="{StaticResource NavTextStyle}"/>
+                        </Grid>
+                    </ToggleButton>
+                </StackPanel>
+            </Grid>
+        </Border>
+        <!-- Контент -->
+        <Border Grid.Column="1" Margin="0,6,6,6" CornerRadius="4" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource FieldBorderBrush}" BorderThickness="1">
+            <ContentControl Content="{Binding CurrentView}" Margin="5"/>
+        </Border>
     </Grid>
 </Window>

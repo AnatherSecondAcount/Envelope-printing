@@ -1,9 +1,6 @@
-using System;
-using System.Globalization;
-using System.IO;
-using System.Windows.Data;
-using System.Windows.Media.Imaging;
 using Envelope_printing.Utils;
+using System.Globalization;
+using System.Windows.Data;
 
 namespace Envelope_printing
 {
@@ -12,7 +9,7 @@ namespace Envelope_printing
     public class ImagePathToBitmapConverter : IValueConverter
     {
         // Maximum decode width in pixels. Adjust according to expected display size.
-        private const int MaxDecodeWidth =1024;
+        private const int MaxDecodeWidth = 1024;
 
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {

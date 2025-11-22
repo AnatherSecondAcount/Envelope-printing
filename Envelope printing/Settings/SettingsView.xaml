@@ -11,18 +11,36 @@
  <StackPanel Margin="16">
  <TextBlock Text="Настройки" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,12"/>
 
- <!-- Theme selector -->
+ <!-- Theme selector panel full width -->
  <Border Style="{StaticResource PanelBorder}" Padding="12" Margin="0,0,0,12">
- <StackPanel>
+ <StackPanel Orientation="Vertical" HorizontalAlignment="Left">
  <TextBlock Text="Тема оформления" Style="{StaticResource SectionHeader}"/>
- <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
- <RadioButton Content="Светлая" GroupName="Theme" Margin="0,0,12,0" IsChecked="{Binding IsLightTheme, Mode=TwoWay}"/>
- <RadioButton Content="Тёмная" GroupName="Theme" IsChecked="{Binding IsDarkTheme, Mode=TwoWay}"/>
- </StackPanel>
+ <ComboBox Width="240" Style="{StaticResource FormComboBox}" ItemsSource="{Binding ThemeOptions}" SelectedValuePath="Value" SelectedValue="{Binding ThemePreference, Mode=TwoWay}">
+ <ComboBox.ItemTemplate>
+ <DataTemplate>
+ <TextBlock Text="{Binding Display}"/>
+ </DataTemplate>
+ </ComboBox.ItemTemplate>
+ </ComboBox>
  </StackPanel>
  </Border>
 
+ <!-- Backup/Restore panel full width -->
+ <Border Style="{StaticResource PanelBorder}" Padding="12" Margin="0,0,0,12">
+ <StackPanel Orientation="Vertical" HorizontalAlignment="Left">
+ <TextBlock Text="Резервная копия" Style="{StaticResource SectionHeader}"/>
+ <TextBlock Text="{Binding LastBackupDisplay}" Foreground="Gray" Margin="0,0,0,6"/>
+ <WrapPanel Margin="0,4,0,0">
+ <Button Content="Создать копию" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" Command="{Binding BackupCommand}"/>
+ <Button Content="Восстановить" Style="{StaticResource ActionButtonStyle}" Command="{Binding RestoreCommand}"/>
+ </WrapPanel>
+ </StackPanel>
+ </Border>
+
+ <!-- Updates panel full width -->
+ <Border Style="{StaticResource PanelBorder}" Padding="12" Margin="0,0,0,12">
  <local:UpdatePanel x:Name="Updates" />
+ </Border>
  </StackPanel>
  </ScrollViewer>
 </UserControl>

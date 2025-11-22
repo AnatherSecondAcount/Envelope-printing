@@ -1,14 +1,10 @@
-using System;
-using System.Linq;
+using Envelope_printing.Utils;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Collections.Specialized;
-using System.ComponentModel;
-using System.Collections.Generic;
 using System.Windows.Threading;
-using Envelope_printing.Utils;
 
 namespace Envelope_printing
 {
@@ -25,7 +21,7 @@ namespace Envelope_printing
         private PrintPreviewViewModel _vm;
         private readonly DispatcherTimer _refreshTimer;
         // Ensure content is clipped to envelope bounds
-        private readonly Canvas _contentLayer = new Canvas { RenderTransformOrigin = new Point(0.5,0.5), ClipToBounds = true };
+        private readonly Canvas _contentLayer = new Canvas { RenderTransformOrigin = new Point(0.5, 0.5), ClipToBounds = true };
 
         public PrintPreviewCanvas()
         {
@@ -53,12 +49,12 @@ namespace Envelope_printing
         {
             if (!PreviewCanvas.Children.Contains(_contentLayer))
                 PreviewCanvas.Children.Add(_contentLayer);
-            Panel.SetZIndex(ImageableRect,0);
-            Panel.SetZIndex(PreviewCanvas,1);
-            Panel.SetZIndex(_contentLayer,1);
+            Panel.SetZIndex(ImageableRect, 0);
+            Panel.SetZIndex(PreviewCanvas, 1);
+            Panel.SetZIndex(_contentLayer, 1);
             // Draw order: template border below imageable border; both under overlay
-            Panel.SetZIndex(EnvelopeOutlineCanvas,2);
-            Panel.SetZIndex(ImageableBorderCanvas,3);
+            Panel.SetZIndex(EnvelopeOutlineCanvas, 2);
+            Panel.SetZIndex(ImageableBorderCanvas, 3);
         }
 
         private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -166,8 +162,8 @@ namespace Envelope_printing
 
             var clipRect = new Rect(l, t, imgW, imgH);
             PreviewCanvas.Clip = new RectangleGeometry(clipRect);
-            EnvelopeOutlineCanvas.Clip = new RectangleGeometry(new Rect(0,0, sheetW, sheetH));
-            ImageableBorderCanvas.Clip = new RectangleGeometry(new Rect(0,0, sheetW, sheetH));
+            EnvelopeOutlineCanvas.Clip = new RectangleGeometry(new Rect(0, 0, sheetW, sheetH));
+            ImageableBorderCanvas.Clip = new RectangleGeometry(new Rect(0, 0, sheetW, sheetH));
 
             if (vm.SelectedTemplate == null)
             {
@@ -181,7 +177,7 @@ namespace Envelope_printing
             double baseEnvW = Px(vm.EnvelopeWidthMm);
             double baseEnvH = Px(vm.EnvelopeHeightMm);
             double scale;
-            if (vm.FitToImageableArea && baseEnvW >0 && baseEnvH >0)
+            if (vm.FitToImageableArea && baseEnvW > 0 && baseEnvH > 0)
             {
                 double sx = imgW / baseEnvW;
                 double sy = imgH / baseEnvH;
@@ -189,17 +185,17 @@ namespace Envelope_printing
             }
             else
             {
-                scale = vm.TemplateScalePercent /100.0;
+                scale = vm.TemplateScalePercent / 100.0;
             }
-            if (vm.FitToImageableArea) scale *=0.999;
+            if (vm.FitToImageableArea) scale *= 0.999;
 
             double envW = baseEnvW * scale;
             double envH = baseEnvH * scale;
 
-            double centerX = l + imgW /2.0 + Px(vm.TemplateOffsetXMm);
-            double centerY = t + imgH /2.0 + Px(vm.TemplateOffsetYMm);
-            double envLeft = centerX - envW /2.0;
-            double envTop = centerY - envH /2.0;
+            double centerX = l + imgW / 2.0 + Px(vm.TemplateOffsetXMm);
+            double centerY = t + imgH / 2.0 + Px(vm.TemplateOffsetYMm);
+            double envLeft = centerX - envW / 2.0;
+            double envTop = centerY - envH / 2.0;
             Rect envRect = new Rect(envLeft, envTop, envW, envH);
 
             _contentLayer.Width = envW;
@@ -220,7 +216,7 @@ namespace Envelope_printing
                 catch { _contentLayer.Background = null; }
             }
 
-            int visualIndex =0;
+            int visualIndex = 0;
             foreach (var item in vm.PreviewItems.OrderBy(i => i.ZIndex))
             {
                 double x = Px(item.PositionX) * scale;
@@ -237,7 +233,7 @@ namespace Envelope_printing
                 }
                 else
                 {
-                    host = new Grid { RenderTransformOrigin = new Point(0.5,0.5) };
+                    host = new Grid { RenderTransformOrigin = new Point(0.5, 0.5) };
                     _contentLayer.Children.Insert(visualIndex, host);
                 }
                 // Do not clear children here; reuse existing visuals when possible
@@ -248,12 +244,12 @@ namespace Envelope_printing
                 tg.Children.Add(new TranslateTransform(x, y));
                 host.RenderTransform = tg;
                 // Reset Canvas offsets
-                Canvas.SetLeft(host,0); Canvas.SetTop(host,0);
+                Canvas.SetLeft(host, 0); Canvas.SetTop(host, 0);
 
                 if (item.IsImage)
                 {
                     Image img = null;
-                    if (host.Children.Count >0 && host.Children[0] is Image existingImg)
+                    if (host.Children.Count > 0 && host.Children[0] is Image existingImg)
                     {
                         img = existingImg;
                     }
@@ -271,7 +267,7 @@ namespace Envelope_printing
                 {
                     Border border = null;
                     TextBlock tb = null;
-                    if (host.Children.Count >0 && host.Children[0] is Border existingBorder && existingBorder.Child is Grid inner && inner.Children.Count >0 && inner.Children[0] is TextBlock existingTb)
+                    if (host.Children.Count > 0 && host.Children[0] is Border existingBorder && existingBorder.Child is Grid inner && inner.Children.Count > 0 && inner.Children[0] is TextBlock existingTb)
                     {
                         border = existingBorder;
                         tb = existingTb;
@@ -308,17 +304,17 @@ namespace Envelope_printing
 
                 visualIndex++;
             }
-            while (_contentLayer.Children.Count > visualIndex) _contentLayer.Children.RemoveAt(_contentLayer.Children.Count -1);
+            while (_contentLayer.Children.Count > visualIndex) _contentLayer.Children.RemoveAt(_contentLayer.Children.Count - 1);
 
             // Determine overflows
-            bool leftOverflow = envRect.Left < clipRect.Left -0.5;
-            bool rightOverflow = envRect.Right > clipRect.Right +0.5;
-            bool topOverflow = envRect.Top < clipRect.Top -0.5;
-            bool bottomOverflow = envRect.Bottom > clipRect.Bottom +0.5;
+            bool leftOverflow = envRect.Left < clipRect.Left - 0.5;
+            bool rightOverflow = envRect.Right > clipRect.Right + 0.5;
+            bool topOverflow = envRect.Top < clipRect.Top - 0.5;
+            bool bottomOverflow = envRect.Bottom > clipRect.Bottom + 0.5;
 
             //1) Draw envelope outline in a noticeable neutral color; clip to page to avoid bleeding outside preview
             EnvelopeOutlineCanvas.Children.Clear();
-            EnvelopeOutlineCanvas.Clip = new RectangleGeometry(new Rect(0,0, sheetW, sheetH));
+            EnvelopeOutlineCanvas.Clip = new RectangleGeometry(new Rect(0, 0, sheetW, sheetH));
             if (!vm.IsPrinting)
             {
                 DrawTemplateBorder(envRect);
@@ -326,7 +322,7 @@ namespace Envelope_printing
 
             //2) Draw imageable area borders, coloring the sides that overflow
             ImageableBorderCanvas.Children.Clear();
-            ImageableBorderCanvas.Clip = new RectangleGeometry(new Rect(0,0, sheetW, sheetH));
+            ImageableBorderCanvas.Clip = new RectangleGeometry(new Rect(0, 0, sheetW, sheetH));
             if (!vm.IsPrinting)
             {
                 DrawImageableBorder(clipRect, leftOverflow, topOverflow, rightOverflow, bottomOverflow);
@@ -337,12 +333,12 @@ namespace Envelope_printing
 
         private void DrawTemplateBorder(Rect envRect)
         {
-            var color = Color.FromRgb(33,150,243); // blue (not alarming)
-            double th =2.5;
+            var color = Color.FromRgb(33, 150, 243); // blue (not alarming)
+            double th = 2.5;
             // inset the outline so it does not coincide with the imageable border when fitted
-            double inset = th *0.6 +1.0; // half thickness plus1px safety
-            Rect r = new Rect(envRect.Left + inset, envRect.Top + inset, envRect.Width -2*inset, envRect.Height -2*inset);
-            if (r.Width <=0 || r.Height <=0) return;
+            double inset = th * 0.6 + 1.0; // half thickness plus1px safety
+            Rect r = new Rect(envRect.Left + inset, envRect.Top + inset, envRect.Width - 2 * inset, envRect.Height - 2 * inset);
+            if (r.Width <= 0 || r.Height <= 0) return;
             AddLine(EnvelopeOutlineCanvas, new Point(r.Left, r.Top), new Point(r.Left, r.Bottom), color, th);
             AddLine(EnvelopeOutlineCanvas, new Point(r.Left, r.Top), new Point(r.Right, r.Top), color, th);
             AddLine(EnvelopeOutlineCanvas, new Point(r.Right, r.Top), new Point(r.Right, r.Bottom), color, th);
@@ -351,9 +347,9 @@ namespace Envelope_printing
 
         private void DrawImageableBorder(Rect clipRect, bool leftOv, bool topOv, bool rightOv, bool bottomOv)
         {
-            var normal = Color.FromRgb(204,204,204); // light gray
-            var alert = Color.FromRgb(220,20,60); // crimson when overflow
-            double th =3;
+            var normal = Color.FromRgb(204, 204, 204); // light gray
+            var alert = Color.FromRgb(220, 20, 60); // crimson when overflow
+            double th = 3;
             AddLine(ImageableBorderCanvas, new Point(clipRect.Left, clipRect.Top), new Point(clipRect.Left, clipRect.Bottom), leftOv ? alert : normal, th);
             AddLine(ImageableBorderCanvas, new Point(clipRect.Left, clipRect.Top), new Point(clipRect.Right, clipRect.Top), topOv ? alert : normal, th);
             AddLine(ImageableBorderCanvas, new Point(clipRect.Right, clipRect.Top), new Point(clipRect.Right, clipRect.Bottom), rightOv ? alert : normal, th);
@@ -364,13 +360,16 @@ namespace Envelope_printing
         {
             var line = new System.Windows.Shapes.Line
             {
-                X1 = A.X, Y1 = A.Y,
-                X2 = B.X, Y2 = B.Y,
-                Stroke = new SolidColorBrush(color), StrokeThickness = thickness
+                X1 = A.X,
+                Y1 = A.Y,
+                X2 = B.X,
+                Y2 = B.Y,
+                Stroke = new SolidColorBrush(color),
+                StrokeThickness = thickness
             };
             targetCanvas.Children.Add(line);
         }
 
-        
+
     }
 }

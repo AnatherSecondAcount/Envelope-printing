@@ -1,11 +1,8 @@
-﻿using System;
+﻿using System.Runtime.InteropServices; // PInvoke
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Input;
-using System.Windows.Media.Imaging;
-using System.Runtime.InteropServices; // PInvoke
 using System.Windows.Interop; // Imaging
 using System.Windows.Media; // ImageSource
+using System.Windows.Media.Imaging;
 
 namespace Envelope_printing
 {
@@ -30,9 +27,9 @@ namespace Envelope_printing
                 // fallback to vector DrawingImage from resources
                 try
                 {
-                    var key = (this.Title ?? string.Empty).IndexOf("Добав", StringComparison.OrdinalIgnoreCase) >=0
+                    var key = (this.Title ?? string.Empty).IndexOf("Добав", StringComparison.OrdinalIgnoreCase) >= 0
                         ? "WindowIcon.AddRecipient"
-                        : ((this.Title ?? string.Empty).IndexOf("Редакт", StringComparison.OrdinalIgnoreCase) >=0 ? "WindowIcon.EditRecipient" : null);
+                        : ((this.Title ?? string.Empty).IndexOf("Редакт", StringComparison.OrdinalIgnoreCase) >= 0 ? "WindowIcon.EditRecipient" : null);
                     if (key != null && Application.Current?.Resources[key] is ImageSource img)
                     {
                         this.Icon = img;
@@ -70,7 +67,7 @@ namespace Envelope_printing
             var info = new SHSTOCKICONINFO();
             info.cbSize = (uint)Marshal.SizeOf(typeof(SHSTOCKICONINFO));
             int hr = SHGetStockIconInfo(id, SHGSI.SHGSI_ICON | SHGSI.SHGSI_SMALLICON, ref info);
-            return hr ==0 ? info.hIcon : IntPtr.Zero;
+            return hr == 0 ? info.hIcon : IntPtr.Zero;
         }
 
         [DllImport("Shell32.dll", SetLastError = false)]
@@ -86,27 +83,27 @@ namespace Envelope_printing
             public IntPtr hIcon;
             public int iSysImageIndex;
             public int iIcon;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst =260)]
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
             public string szPath;
         }
 
         private enum SHGSI : uint
         {
-            SHGSI_ICON =0x000000100,
-            SHGSI_DISPLAYNAME =0x000000200,
-            SHGSI_TYPENAME =0x000000400,
-            SHGSI_ATTRIBUTES =0x000000800,
-            SHGSI_ICONLOCATION =0x000001000,
-            SHGSI_LARGEICON =0x000000000,
-            SHGSI_SMALLICON =0x000000001,
-            SHGSI_SHELLICONSIZE =0x000000004
+            SHGSI_ICON = 0x000000100,
+            SHGSI_DISPLAYNAME = 0x000000200,
+            SHGSI_TYPENAME = 0x000000400,
+            SHGSI_ATTRIBUTES = 0x000000800,
+            SHGSI_ICONLOCATION = 0x000001000,
+            SHGSI_LARGEICON = 0x000000000,
+            SHGSI_SMALLICON = 0x000000001,
+            SHGSI_SHELLICONSIZE = 0x000000004
         }
 
         private enum SHSTOCKICONID : uint
         {
-            SIID_Application =2,
-            SIID_New =181, // generic "new"
-            SIID_Edit =245 // pencil edit icon
+            SIID_Application = 2,
+            SIID_New = 181, // generic "new"
+            SIID_Edit = 245 // pencil edit icon
         }
 
         private void OkButton_Click(object sender, RoutedEventArgs e)

@@ -6,9 +6,11 @@
  <ResourceDictionary>
  <ResourceDictionary.MergedDictionaries>
  <ResourceDictionary Source="pack://application:,,,/Styles/MinimalisticStyles.xaml"/>
+ <!-- Dark theme slot controlled by ThemeManager (index1) -->
+ <ResourceDictionary />
+ <!-- Extra override slot (index2) -->
+ <ResourceDictionary />
  </ResourceDictionary.MergedDictionaries>
-
- <!-- Map VM to View for Home tab -->
  <DataTemplate DataType="{x:Type local:HomeViewModel}">
  <local:HomeView/>
  </DataTemplate>
